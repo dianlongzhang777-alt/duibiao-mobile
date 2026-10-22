@@ -986,9 +986,11 @@
         <div class="idx">
           <span>成交 <b>${escapeHtml(item.transactionIndex != null ? String(item.transactionIndex) : '—')}</b></span>
           <span>人气 <b>${escapeHtml(item.popularityIndex != null ? String(item.popularityIndex) : '—')}</b></span>
-          <span>👍 ${fmt(item.newLikes)}</span>
-          <span>💬 ${fmt(item.newComments)}</span>
-          <span>⭐ ${fmt(item.newFavorites)}</span>
+          <span>播 ${fmt(item.playCount)}</span>
+          <span>赞 ${fmt(item.diggCount != null ? item.diggCount : item.newLikes)}</span>
+          <span>💬 ${fmt(item.commentCount != null ? item.commentCount : item.newComments)}</span>
+          <span>⭐ ${fmt(item.collectCount != null ? item.collectCount : item.newFavorites)}</span>
+          <span>↪ ${fmt(item.shareCount)}</span>
         </div>
       </div>
     </div>`;

@@ -961,13 +961,8 @@
     const label = item.rankLabel
       ? `<span class="rank-label">${escapeHtml(item.rankLabel)}</span>`
       : '';
-    const syHref = item.douyinUrl
-      || (item.awemeId ? `https://www.douyin.com/video/${item.awemeId}` : '')
-      || (item.videoLink && String(item.videoLink).includes('douyin.com') ? item.videoLink : '')
-      || item.videoLink
-      || '';
-    const link = syHref
-      ? `<a href="${escapeHtml(syHref)}" target="_blank" rel="noopener">${syHref.includes('douyin.com') ? '抖音' : '详情'}</a>`
+    const link = item.videoLink
+      ? `<a href="${escapeHtml(item.videoLink)}" target="_blank" rel="noopener">详情</a>`
       : '';
     const store = item.storeOrProduct
       ? `<span>${escapeHtml(item.storeOrProduct)}</span>`
@@ -986,11 +981,9 @@
         <div class="idx">
           <span>成交 <b>${escapeHtml(item.transactionIndex != null ? String(item.transactionIndex) : '—')}</b></span>
           <span>人气 <b>${escapeHtml(item.popularityIndex != null ? String(item.popularityIndex) : '—')}</b></span>
-          <span>播 ${fmt(item.playCount)}</span>
-          <span>赞 ${fmt(item.diggCount != null ? item.diggCount : item.newLikes)}</span>
-          <span>💬 ${fmt(item.commentCount != null ? item.commentCount : item.newComments)}</span>
-          <span>⭐ ${fmt(item.collectCount != null ? item.collectCount : item.newFavorites)}</span>
-          <span>↪ ${fmt(item.shareCount)}</span>
+          <span>👍 ${fmt(item.newLikes)}</span>
+          <span>💬 ${fmt(item.newComments)}</span>
+          <span>⭐ ${fmt(item.newFavorites)}</span>
         </div>
       </div>
     </div>`;

@@ -324,6 +324,59 @@
     background: #fff;
   }
   .ops a:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+  .ops .btn-view-posts {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 11px;
+    background: #fff;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: inherit;
+  }
+  .ops .btn-view-posts:hover { border-color: var(--accent); color: var(--accent); }
+  table.acct tr.acct-row { cursor: pointer; }
+  table.acct tr.acct-row.expanded td { background: var(--accent-soft); }
+  table.acct tr.acct-row.expanded .btn-view-posts {
+    border-color: var(--accent); color: var(--accent); background: #fff;
+  }
+  table.acct tr.acct-posts-row td {
+    padding: 0;
+    background: #f7f8fa;
+    border-bottom: 1px solid var(--border);
+  }
+  .acct-posts-panel {
+    padding: 10px 12px 12px;
+  }
+  .acct-posts-hd {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    color: var(--muted); font-size: 12px;
+  }
+  .acct-posts-hd strong { color: var(--text); font-weight: 600; }
+  .acct-posts-list { display: flex; flex-direction: column; gap: 8px; }
+  .acct-posts-list .feed-card {
+    box-shadow: none;
+  }
+  .acct-filter-label {
+    color: var(--muted); font-size: 12px; font-weight: 550;
+    margin-left: 2px;
+  }
+  select.acct-filter {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--text);
+    font-size: 12px;
+    padding: 6px 10px;
+    min-height: 36px;
+    max-width: min(280px, 100%);
+    font-family: inherit;
+  }
   .dash { color: #c0c4cc; }
 
   .filters {
@@ -644,6 +697,10 @@
         <button type="button" data-sort="plays">播放量高→低</button>
         <button type="button" data-sort="interactions">互动量高→低</button>
       </div>
+      <label class="acct-filter-label" for="acctFilter">按账号</label>
+      <select class="acct-filter" id="acctFilter" aria-label="按账号筛选作品流">
+        <option value="">全部账号</option>
+      </select>
       <span class="hint" id="feedCount" style="color:var(--muted);font-size:12px;"></span>
     </div>
     <div class="feed" id="feed"></div>
@@ -743,16 +800,135 @@
     renderFeed();
   }
 
-  function sortPosts(list) {
+  function sortPosts(list, mode) {
     const posts = (list || []).slice();
-    if (sort === 'plays') {
+    const m = mode || sort;
+    if (m === 'plays') {
       posts.sort((a, b) => (Number(b.plays) || 0) - (Number(a.plays) || 0));
-    } else if (sort === 'interactions') {
+    } else if (m === 'interactions') {
       posts.sort((a, b) => (Number(b.interactions) || 0) - (Number(a.interactions) || 0));
     } else {
       posts.sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')));
     }
     return posts;
+  }
+
+  let expandedAccountKey = null; // douyin_id preferred, else nickname
+  let feedAccountKey = ''; // '' = all
+
+  function accountKey(a) {
+    if (!a) return '';
+    const id = (a.douyin_id || '').trim();
+    if (id) return 'id:' + id;
+    const nick = (a.nickname || '').trim();
+    return nick ? 'nick:' + nick : '';
+  }
+
+  function postsForAccount(a) {
+    const id = (a.douyin_id || '').trim();
+    const nick = (a.nickname || '').trim();
+    return (D.all_posts || []).filter(p => {
+      if (id) return String(p.douyin_id || '') === id;
+      if (nick) return String(p.nickname || '') === nick;
+      return false;
+    });
+  }
+
+  function postCardHtml(p, opts) {
+    opts = opts || {};
+    const dur = p.duration_sec != null ? `时长 ${p.duration_sec}s` : '';
+    const link = p.url
+      ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">抖音链接</a>`
+      : '';
+    const nick = opts.hideNick ? '' : `<span>${escapeHtml(p.nickname || '')}</span>`;
+    return `<article class="feed-card">
+      <div class="cap">${escapeHtml(p.title || '（无标题）')}</div>
+      <div class="meta-row">
+        ${nick}
+        <span>${escapeHtml(p.published_at || p.day || '')}</span>
+        <span>${dur}</span>
+        ${link}
+      </div>
+      <div class="mrow">${metricIcons(p)}</div>
+    </article>`;
+  }
+
+  function accountPostsPanelHtml(a) {
+    const posts = sortPosts(postsForAccount(a), 'plays');
+    const key = accountKey(a);
+    if (!posts.length) {
+      return `<div class="acct-posts-panel" data-acct-key="${escapeHtml(key)}">
+        <div class="empty-hint">暂无入库作品</div>
+      </div>`;
+    }
+    return `<div class="acct-posts-panel" data-acct-key="${escapeHtml(key)}">
+      <div class="acct-posts-hd">
+        <span><strong>${escapeHtml(a.nickname || '')}</strong> · 入库 ${posts.length} 条 · 按播放量高→低</span>
+      </div>
+      <div class="acct-posts-list">${posts.map(p => postCardHtml(p, { hideNick: true })).join('')}</div>
+    </div>`;
+  }
+
+  function allAccountOptions() {
+    const seen = new Map();
+    (D.categories || []).forEach(c => {
+      (c.accounts || []).forEach(a => {
+        const key = accountKey(a);
+        if (!key || seen.has(key)) return;
+        seen.set(key, a.nickname || a.douyin_id || key);
+      });
+    });
+    // also include accounts that only appear in all_posts
+    (D.all_posts || []).forEach(p => {
+      const key = accountKey(p);
+      if (!key || seen.has(key)) return;
+      seen.set(key, p.nickname || p.douyin_id || key);
+    });
+    return Array.from(seen.entries()).sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'zh-CN'));
+  }
+
+  function syncAcctFilterSelect() {
+    const sel = document.getElementById('acctFilter');
+    if (!sel) return;
+    const cur = feedAccountKey;
+    const opts = allAccountOptions();
+    sel.innerHTML = '<option value="">全部账号</option>' +
+      opts.map(([k, label]) =>
+        `<option value="${escapeHtml(k)}">${escapeHtml(label)}</option>`
+      ).join('');
+    sel.value = opts.some(([k]) => k === cur) ? cur : '';
+    if (sel.value !== cur) feedAccountKey = sel.value;
+  }
+
+  function setFeedAccountFilter(key, opts) {
+    opts = opts || {};
+    feedAccountKey = key || '';
+    const sel = document.getElementById('acctFilter');
+    if (sel && sel.value !== feedAccountKey) sel.value = feedAccountKey;
+    if (opts.switchTab) {
+      document.querySelectorAll('.sec-tabs button').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-tab') === 'feed');
+      });
+      document.querySelectorAll('.sec-panel').forEach(p => {
+        p.classList.toggle('active', p.id === 'panel-feed');
+      });
+    }
+    renderFeed();
+  }
+
+  function toggleAccountExpand(key) {
+    expandedAccountKey = (expandedAccountKey === key) ? null : key;
+    renderCategories();
+    if (expandedAccountKey) {
+      // 联动作品流筛选（不强制切 tab，避免打断账号库浏览）
+      feedAccountKey = expandedAccountKey;
+      const sel = document.getElementById('acctFilter');
+      if (sel) sel.value = feedAccountKey;
+      // 不立刻 renderFeed，等用户切到作品流时会按筛选渲染；若当前已在 feed 则刷新
+      if (document.getElementById('panel-feed').classList.contains('active')) {
+        renderFeed();
+      }
+    }
   }
 
   function initViewMonthFrom(anchor, setter) {
@@ -1095,18 +1271,21 @@
 
   function renderCategories() {
     document.getElementById('libHint').textContent =
-      `共 ${D.target_count} 个账号 · 按品类启发式分组`;
+      `共 ${D.target_count} 个账号 · 点击行可查看该号入库作品`;
     const root = document.getElementById('categories');
     const cats = (D.categories || []).filter(c => c.count > 0);
     root.innerHTML = cats.map(c => {
       const rows = (c.accounts || []).map(a => {
+        const key = accountKey(a);
+        const expanded = key && key === expandedAccountKey;
         const profile = a.profile_url
           ? `<a href="${escapeHtml(a.profile_url)}" target="_blank" rel="noopener">主页</a>`
           : '';
         const share = a.share_url
           ? `<a href="${escapeHtml(a.share_url)}" target="_blank" rel="noopener">分享</a>`
           : '';
-        return `<tr>
+        const viewLabel = expanded ? '收起作品' : '查看作品';
+        const main = `<tr class="acct-row${expanded ? ' expanded' : ''}" data-acct-key="${escapeHtml(key)}" tabindex="0" role="button" aria-expanded="${expanded ? 'true' : 'false'}">
           <td>
             <div class="acct-name">${escapeHtml(a.nickname)}</div>
             <div class="acct-id">@${escapeHtml(a.douyin_id || '')}</div>
@@ -1115,8 +1294,13 @@
           <td>${dash(a.total_likes != null ? fmt(a.total_likes) : null)}</td>
           <td>${dash(a.works_total)}</td>
           <td>${a.stored_posts || 0}</td>
-          <td class="ops">${profile}${share}</td>
+          <td class="ops">
+            <button type="button" class="btn-view-posts" data-acct-key="${escapeHtml(key)}">${viewLabel}</button>
+            ${profile}${share}
+          </td>
         </tr>`;
+        if (!expanded) return main;
+        return main + `<tr class="acct-posts-row"><td colspan="6">${accountPostsPanelHtml(a)}</td></tr>`;
       }).join('');
       return `<div class="card cat-block">
         <div class="cat-hd" style="background:${c.bg};color:${c.fg}">
@@ -1148,7 +1332,11 @@
   }
 
   function renderFeed() {
+    syncAcctFilterSelect();
     let posts = (D.all_posts || []).slice();
+    if (feedAccountKey) {
+      posts = posts.filter(p => accountKey(p) === feedAccountKey);
+    }
     const anchor = selectedDate ? parseDay(selectedDate) : new Date();
     if (range === '7' || range === '30') {
       const days = range === '7' ? 7 : 30;
@@ -1160,28 +1348,18 @@
       });
     }
     posts = sortPosts(posts);
-    document.getElementById('feedCount').textContent = `共 ${posts.length} 条`;
+    const acctLabel = feedAccountKey
+      ? ((document.getElementById('acctFilter') || {}).selectedOptions || [{}])[0].textContent || ''
+      : '';
+    document.getElementById('feedCount').textContent = feedAccountKey
+      ? `共 ${posts.length} 条` + (acctLabel ? ` · ${acctLabel}` : '')
+      : `共 ${posts.length} 条`;
     const feed = document.getElementById('feed');
     if (!posts.length) {
       feed.innerHTML = '<div class="card empty-hint">当前筛选下无作品</div>';
       return;
     }
-    feed.innerHTML = posts.map(p => {
-      const dur = p.duration_sec != null ? `时长 ${p.duration_sec}s` : '';
-      const link = p.url
-        ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">抖音链接</a>`
-        : '';
-      return `<article class="feed-card">
-        <div class="cap">${escapeHtml(p.title || '（无标题）')}</div>
-        <div class="meta-row">
-          <span>${escapeHtml(p.nickname || '')}</span>
-          <span>${escapeHtml(p.published_at || p.day || '')}</span>
-          <span>${dur}</span>
-          ${link}
-        </div>
-        <div class="mrow">${metricIcons(p)}</div>
-      </article>`;
-    }).join('');
+    feed.innerHTML = posts.map(p => postCardHtml(p)).join('');
   }
 
   function renderMeta() {
@@ -1278,6 +1456,37 @@
   document.getElementById('sortSeg').addEventListener('click', onSortClick);
   document.getElementById('daySortSeg').addEventListener('click', onSortClick);
   document.getElementById('btnRefresh').addEventListener('click', () => renderAll());
+
+  document.getElementById('categories').addEventListener('click', (e) => {
+    const a = e.target.closest('a');
+    if (a) return; // 主页/分享/抖音链接正常跳转
+    const btn = e.target.closest('button.btn-view-posts');
+    const row = e.target.closest('tr.acct-row');
+    const key = (btn && btn.getAttribute('data-acct-key'))
+      || (row && row.getAttribute('data-acct-key'));
+    if (!key) return;
+    e.preventDefault();
+    toggleAccountExpand(key);
+  });
+  document.getElementById('categories').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const row = e.target.closest('tr.acct-row');
+    if (!row) return;
+    e.preventDefault();
+    const key = row.getAttribute('data-acct-key');
+    if (key) toggleAccountExpand(key);
+  });
+
+  const acctFilterEl = document.getElementById('acctFilter');
+  if (acctFilterEl) {
+    acctFilterEl.addEventListener('change', () => {
+      feedAccountKey = acctFilterEl.value || '';
+      // 联动：选中某账号时展开账号库对应行；选「全部账号」则收起
+      expandedAccountKey = feedAccountKey || null;
+      renderCategories();
+      renderFeed();
+    });
+  }
 
   syncSortButtons();
   renderAll();

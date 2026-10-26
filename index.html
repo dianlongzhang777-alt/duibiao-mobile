@@ -480,6 +480,13 @@
     background: #fff4e8; color: #c47a20;
     padding: 0 5px; border-radius: 4px;
   }
+  .sy-role {
+    font-size: 10px; font-weight: 650;
+    padding: 0 5px; border-radius: 4px;
+  }
+  .sy-role.daren { background: #eef2ff; color: #3b5bdb; }
+  .sy-role.shangjia { background: #e6f7ed; color: #0f7a45; }
+  .sy-col.sy-total { grid-column: 1 / -1; }
 
   /* —— Mobile / foldable (OPPO Find N2 ~360–412px folded) —— */
   @media (max-width: 640px) {
@@ -955,11 +962,15 @@
     }).join('');
   }
 
-  function syRowHtml(item) {
+  function syRowHtml(item, opts) {
+    opts = opts || {};
     const rank = item.rank != null ? item.rank : '—';
     const top = Number(rank) <= 3;
     const label = item.rankLabel
       ? `<span class="rank-label">${escapeHtml(item.rankLabel)}</span>`
+      : '';
+    const role = item.role
+      ? `<span class="sy-role ${item.role === '商家' ? 'shangjia' : 'daren'}">${escapeHtml(item.role)}</span>`
       : '';
     const syHref = item.douyinUrl
       || (item.awemeId ? `https://www.douyin.com/video/${item.awemeId}` : '')
@@ -978,6 +989,7 @@
         <div class="title">${escapeHtml(item.title || '（无标题）')}</div>
         <div class="sub">
           <strong>${escapeHtml(item.creator || '')}</strong>
+          ${role}
           ${label}
           <span>${escapeHtml(item.publishTime || '')}</span>
           ${store}
@@ -1044,6 +1056,10 @@
     const block = (day.categories || {})[syCategory] || {};
     const daren = block['达人'] || [];
     const shangjia = block['商家'] || [];
+    let zongbang = block['总榜'];
+    if (!Array.isArray(zongbang)) {
+      zongbang = syBuildZongbang(daren, shangjia);
+    }
     lists.innerHTML = `
       <div class="card sy-col">
         <div class="sy-col-hd">达人 TOP5 <span class="badge">${daren.length}</span></div>
@@ -1053,7 +1069,28 @@
         <div class="sy-col-hd">商家 TOP5 <span class="badge">${shangjia.length}</span></div>
         ${shangjia.length ? shangjia.map(syRowHtml).join('') : '<div class="empty-hint">暂无商家数据</div>'}
       </div>
+      <div class="card sy-col sy-total">
+        <div class="sy-col-hd">类目总榜 <span class="badge">${zongbang.length}</span></div>
+        ${zongbang.length ? zongbang.map(syRowHtml).join('') : '<div class="empty-hint">暂无总榜数据</div>'}
+      </div>
     `;
+  }
+
+  function syBuildZongbang(daren, shangjia) {
+    const merged = [];
+    (daren || []).forEach(it => merged.push(Object.assign({}, it, { role: '达人' })));
+    (shangjia || []).forEach(it => merged.push(Object.assign({}, it, { role: '商家' })));
+    const num = (v) => (typeof v === 'number' && !isNaN(v) ? v : -1);
+    merged.sort((a, b) => {
+      const pa = num(a.playCount), pb = num(b.playCount);
+      if (pb !== pa) return pb - pa;
+      const oa = num(a.popularityIndex), ob = num(b.popularityIndex);
+      if (ob !== oa) return ob - oa;
+      const da = num(a.diggCount != null ? a.diggCount : a.newLikes);
+      const db = num(b.diggCount != null ? b.diggCount : b.newLikes);
+      return db - da;
+    });
+    return merged.map((it, i) => Object.assign({}, it, { rank: i + 1 }));
   }
 
   function renderCategories() {
@@ -1153,7 +1190,7 @@
     const syN = (D.shengyijing_dates || []).length;
     document.getElementById('footerNote').textContent =
       mode === 'shengyijing'
-        ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
+        ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 + 类目总榜 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
         : `左侧日历点选日期查看当日采集 · 蓝点 = 有早报 · 粉丝/获赞/作品未采集时显示 — · ⌘R 刷新 App 数据`;
   }
 

@@ -63,7 +63,46 @@
     cursor: pointer;
     color: var(--text);
   }
+
   .btn-ghost:hover { background: #f7f8fa; }
+
+  .btn-baokuan {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #f0b429;
+    background: #fff9eb;
+    color: #9a6b00;
+    border-radius: 6px;
+    padding: 1px 8px;
+    font-size: 11px;
+    line-height: 1.6;
+    cursor: pointer;
+    margin-left: 4px;
+    white-space: nowrap;
+    vertical-align: baseline;
+  }
+  .btn-baokuan:hover { background: #fff1c9; border-color: #e0a100; color: #7a5400; }
+  .btn-baokuan:active { transform: translateY(0.5px); }
+
+  .duibiao-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%);
+    z-index: 9999;
+    max-width: min(420px, 90vw);
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: #1f2329;
+    color: #fff;
+    font-size: 13px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .duibiao-toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+  .duibiao-toast.error { background: #c45656; }
 
   .card {
     background: var(--card);
@@ -840,6 +879,7 @@
     const link = p.url
       ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">抖音链接</a>`
       : '';
+    const bk = p.url ? baokuanBtn(p.url) : '';
     const nick = opts.hideNick ? '' : `<span>${escapeHtml(p.nickname || '')}</span>`;
     return `<article class="feed-card">
       <div class="cap">${escapeHtml(p.title || '（无标题）')}</div>
@@ -847,7 +887,7 @@
         ${nick}
         <span>${escapeHtml(p.published_at || p.day || '')}</span>
         <span>${dur}</span>
-        ${link}
+        ${link}${bk}
       </div>
       <div class="mrow">${metricIcons(p)}</div>
     </article>`;
@@ -967,6 +1007,68 @@
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
   const dash = (v) => (v == null || v === '' ? '<span class="dash">—</span>' : escapeHtml(String(v)));
+
+  function isDouyinCollectUrl(u) {
+    if (!u) return false;
+    try {
+      const x = new URL(String(u));
+      if (x.protocol !== 'https:') return false;
+      const h = (x.hostname || '').toLowerCase();
+      return h === 'douyin.com' || h.endsWith('.douyin.com')
+        || h === 'iesdouyin.com' || h.endsWith('.iesdouyin.com')
+        || h === 'v.douyin.com' || h.endsWith('.v.douyin.com');
+    } catch (_) { return false; }
+  }
+
+  function baokuanBtn(url) {
+    if (!isDouyinCollectUrl(url)) return '';
+    const u = escapeHtml(String(url));
+    return `<button type="button" class="btn-baokuan" data-baokuan-url="${u}" title="一键填入爆款对标工作台并开始采集">送入工作台</button>`;
+  }
+
+  function sendToBaokuan(url) {
+    const u = String(url || '').trim();
+    if (!isDouyinCollectUrl(u)) {
+      window.__duibiaoToast?.('仅支持抖音 https 链接', true);
+      return;
+    }
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.sendToBaokuan) {
+        window.webkit.messageHandlers.sendToBaokuan.postMessage({ url: u });
+        return;
+      }
+    } catch (_) {}
+    // Fallback: clipboard + hint (browser / no native bridge)
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(u).then(() => {
+          window.__duibiaoToast?.('已复制链接；请在爆款对标工作台粘贴采集', false);
+        }).catch(() => {
+          window.prompt('复制此链接到爆款对标工作台', u);
+        });
+      } else {
+        window.prompt('复制此链接到爆款对标工作台', u);
+      }
+    } catch (_) {
+      window.prompt('复制此链接到爆款对标工作台', u);
+    }
+  }
+
+  window.__duibiaoToast = function(msg, isError) {
+    let el = document.getElementById('duibiaoToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'duibiaoToast';
+      el.className = 'duibiao-toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = String(msg || '');
+    el.classList.toggle('error', !!isError);
+    el.classList.add('show');
+    clearTimeout(window.__duibiaoToastTimer);
+    window.__duibiaoToastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+  };
+
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function ymd(y, m0, d) {
@@ -1123,6 +1225,7 @@
       const link = p.url
         ? `<a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">抖音</a>`
         : '';
+      const bk = p.url ? baokuanBtn(p.url) : '';
       return `<div class="day-post">
         <div>
           <div class="title">${escapeHtml(p.title || '（无标题）')}</div>
@@ -1130,7 +1233,7 @@
             <strong>${escapeHtml(p.nickname || '')}</strong>
             <span>${escapeHtml(p.published_at || '')}</span>
             <span class="tag-new">新增</span>
-            ${link}
+            ${link}${bk}
           </div>
         </div>
         <div class="metrics">${metricIcons(p)}</div>
@@ -1156,6 +1259,7 @@
     const link = syHref
       ? `<a href="${escapeHtml(syHref)}" target="_blank" rel="noopener">${syHref.includes('douyin.com') ? '抖音' : '详情'}</a>`
       : '';
+    const bk = (syHref && String(syHref).includes('douyin')) ? baokuanBtn(syHref) : '';
     const store = item.storeOrProduct
       ? `<span>${escapeHtml(item.storeOrProduct)}</span>`
       : '';
@@ -1169,7 +1273,7 @@
           ${label}
           <span>${escapeHtml(item.publishTime || '')}</span>
           ${store}
-          ${link}
+          ${link}${bk}
         </div>
         <div class="idx">
           <span>成交 <b>${escapeHtml(item.transactionIndex != null ? String(item.transactionIndex) : '—')}</b></span>
@@ -1487,6 +1591,15 @@
       renderFeed();
     });
   }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button.btn-baokuan');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const url = btn.getAttribute('data-baokuan-url') || '';
+    sendToBaokuan(url);
+  }, true);
 
   syncSortButtons();
   renderAll();

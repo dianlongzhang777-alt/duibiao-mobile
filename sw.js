@@ -1,6 +1,14 @@
-/* Minimal service worker for Chrome installability. Network-first for data.js. */
-const CACHE = 'duibiao-shell-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+/* Service worker for installability on /duibiao-mobile/ */
+const CACHE = 'duibiao-shell-v2';
+const BASE = '/duibiao-mobile';
+const SHELL = [
+  BASE + '/',
+  BASE + '/index.html',
+  BASE + '/manifest.webmanifest',
+  BASE + '/icon-192.png',
+  BASE + '/icon-512.png',
+  BASE + '/icon-512-maskable.png'
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -21,8 +29,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  if (!url.pathname.startsWith('/duibiao-mobile')) return;
 
-  // Always prefer network for data.js so dashboard stays fresh
   if (url.pathname.endsWith('/data.js') || url.pathname.endsWith('data.js')) {
     event.respondWith(
       fetch(req).then((res) => {
@@ -39,6 +47,6 @@ self.addEventListener('fetch', (event) => {
       const copy = res.clone();
       caches.open(CACHE).then((c) => c.put(req, copy));
       return res;
-    }))
+    }).catch(() => hit))
   );
 });

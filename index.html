@@ -320,7 +320,26 @@
     padding: 6px 10px; font-size: 12px; cursor: pointer;
   }
   .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
-  .lib-status-tabs { margin: 0 0 12px; }
+  .lib-status-seg {
+    display: inline-flex; margin: 0 0 14px; border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; background: #fff;
+  }
+  .lib-status-seg button {
+    border: none; background: transparent; padding: 9px 16px; font-size: 13px;
+    font-weight: 550; color: var(--muted); cursor: pointer; min-width: 110px;
+  }
+  .lib-status-seg button + button { border-left: 1px solid var(--border); }
+  .lib-status-seg button.active {
+    background: #1f2329; color: #fff; font-weight: 650;
+  }
+  .lib-status-seg .n {
+    display: inline-block; margin-left: 6px; font-variant-numeric: tabular-nums;
+    opacity: .85; font-weight: 600;
+  }
+  .lib-panel-title {
+    font-size: 13px; color: var(--muted); margin: 0 0 10px;
+  }
+
   .pending-item {
     margin-top: 8px; padding: 8px 10px; background: #fff8e6; border-radius: 8px;
     font-size: 12px; color: #8a6d1d; word-break: break-all;
@@ -410,7 +429,7 @@
     line-height: inherit;
   }
   .ops .btn-view-posts:hover { border-color: var(--accent); color: var(--accent); }
-  table.acct tr.acct-row { cursor: pointer; }
+  table.acct tr.acct-row { cursor: default; }
   table.acct tr.acct-row.expanded td { background: var(--accent-soft); }
   table.acct tr.acct-row.expanded .btn-view-posts {
     border-color: var(--accent); color: var(--accent); background: #fff;
@@ -760,10 +779,11 @@
       <div class="hint" id="addMonitorMsg" style="margin-top:8px"></div>
       <div id="pendingMonitorList"></div>
     </div>
-    <div class="sec-tabs lib-status-tabs" role="tablist" aria-label="账号状态">
-      <button type="button" class="active" data-lib-status="active" role="tab">监控中</button>
-      <button type="button" data-lib-status="inactive" role="tab">未监控</button>
+    <div class="lib-status-seg" role="tablist" aria-label="账号状态">
+      <button type="button" class="active" data-lib-status="active" role="tab" id="libStatusActive">监控中<span class="n" id="libCountActive"></span></button>
+      <button type="button" data-lib-status="inactive" role="tab" id="libStatusInactive">未监控<span class="n" id="libCountInactive"></span></button>
     </div>
+    <div class="lib-panel-title" id="libPanelTitle"></div>
     <div id="categories"></div>
   </div>
 
@@ -994,7 +1014,7 @@
     const sel = document.getElementById('acctFilter');
     if (sel && sel.value !== feedAccountKey) sel.value = feedAccountKey;
     if (opts.switchTab) {
-      document.querySelectorAll('.sec-tabs button').forEach(b => {
+      document.querySelectorAll('.sec-tabs button[data-tab]').forEach(b => {
         b.classList.toggle('active', b.getAttribute('data-tab') === 'feed');
       });
       document.querySelectorAll('.sec-panel').forEach(p => {
@@ -1425,10 +1445,23 @@
     const activeCount = D.target_count || (D.targets || []).length || 0;
     const inactive = D.inactive_accounts || [];
     const pending = (window.__pendingMonitorAdds || D.pending_monitor_adds || []).filter(it => (it.status || 'pending') !== 'done');
+    const ca = document.getElementById('libCountActive');
+    const ci = document.getElementById('libCountInactive');
+    if (ca) ca.textContent = String(activeCount);
+    if (ci) ci.textContent = String(inactive.length);
+    document.querySelectorAll('.lib-status-seg button[data-lib-status]').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-lib-status') === libStatus);
+    });
+    const title = document.getElementById('libPanelTitle');
+    if (title) {
+      title.textContent = libStatus === 'inactive'
+        ? '以下账号当前不采集；点「重新监控」可加回队列'
+        : '以下账号每天早报会采集；点「查看作品」展开入库内容';
+    }
     document.getElementById('libHint').textContent =
       libStatus === 'inactive'
-        ? `未监控 ${inactive.length} 个 · 可点「重新监控」加回`
-        : `监控中 ${activeCount} 个 · 点击行可查看该号入库作品`;
+        ? `未监控 ${inactive.length} 个`
+        : `监控中 ${activeCount} 个`;
     renderPendingMonitorList(pending);
     const root = document.getElementById('categories');
     if (libStatus === 'inactive') {
@@ -1479,7 +1512,7 @@
       : `<button type="button" class="btn-view-posts" data-acct-key="${escapeHtml(key)}">${viewLabel}</button>
             <button type="button" class="btn-ghost btn-stop-monitor" data-acct-key="${escapeHtml(key)}" data-nickname="${escapeHtml(a.nickname || '')}" data-douyin-id="${escapeHtml(a.douyin_id || '')}" data-sec="${escapeHtml(a.sec_user_id || '')}" data-profile="${escapeHtml(a.profile_url || '')}" data-share="${escapeHtml(a.share_url || '')}">停止监控</button>
             ${profile}${share}`;
-    const main = `<tr class="acct-row${expanded ? ' expanded' : ''}" data-acct-key="${escapeHtml(key)}" tabindex="0" role="button" aria-expanded="${expanded ? 'true' : 'false'}">
+    const main = `<tr class="acct-row${expanded ? ' expanded' : ''}" data-acct-key="${escapeHtml(key)}">
           <td>
             <div class="acct-name">${escapeHtml(a.nickname)}${pill}</div>
             <div class="acct-id">@${escapeHtml(a.douyin_id || '')}</div>
@@ -1714,10 +1747,11 @@
     btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode')));
   });
 
-  document.querySelectorAll('.sec-tabs button').forEach(btn => {
+  document.querySelectorAll('.sec-tabs button[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.getAttribute('data-tab');
-      document.querySelectorAll('.sec-tabs button').forEach(b => b.classList.toggle('active', b === btn));
+      if (!tab) return;
+      document.querySelectorAll('.sec-tabs button[data-tab]').forEach(b => b.classList.toggle('active', b === btn));
       document.querySelectorAll('.sec-panel').forEach(p => {
         p.classList.toggle('active', p.id === 'panel-' + tab);
       });
@@ -1763,28 +1797,34 @@
       return;
     }
     const btn = e.target.closest('button.btn-view-posts');
-    const row = e.target.closest('tr.acct-row');
-    const key = (btn && btn.getAttribute('data-acct-key'))
-      || (row && row.getAttribute('data-acct-key'));
+    if (!btn) return; // 整行不再展开，避免列表乱跳
+    const key = btn.getAttribute('data-acct-key');
     if (!key) return;
     e.preventDefault();
+    e.stopPropagation();
     toggleAccountExpand(key);
   });
   document.getElementById('categories').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const row = e.target.closest('tr.acct-row');
-    if (!row) return;
+    const btn = e.target.closest('button.btn-view-posts');
+    if (!btn) return;
     e.preventDefault();
-    const key = row.getAttribute('data-acct-key');
+    const key = btn.getAttribute('data-acct-key');
     if (key) toggleAccountExpand(key);
   });
 
 
-  document.querySelectorAll('[data-lib-status]').forEach(btn => {
+  document.querySelectorAll('.lib-status-seg button[data-lib-status]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('[data-lib-status]').forEach(b => b.classList.toggle('active', b === btn));
       libStatus = btn.getAttribute('data-lib-status') || 'active';
       expandedAccountKey = '';
+      // 保持在「对标账号库」面板，不要动作品流 tab
+      document.querySelectorAll('.sec-tabs button[data-tab]').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-tab') === 'library');
+      });
+      document.querySelectorAll('.sec-panel').forEach(p => {
+        p.classList.toggle('active', p.id === 'panel-library');
+      });
       renderCategories();
     });
   });

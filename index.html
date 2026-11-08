@@ -302,6 +302,36 @@
   }
   .empty-hint strong { color: var(--text); display: block; margin-bottom: 6px; }
 
+
+  .add-monitor { padding: 14px 16px; margin: 0 0 12px; }
+  .add-monitor-hd { font-weight: 650; margin-bottom: 4px; }
+  .add-monitor-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .add-monitor-row input {
+    flex: 1; min-width: 220px; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 10px; font-size: 14px; background: #fff;
+  }
+  .btn-primary {
+    border: none; background: var(--accent); color: #fff; border-radius: 10px;
+    padding: 10px 14px; font-weight: 600; cursor: pointer;
+  }
+  .btn-primary:disabled { opacity: .55; cursor: default; }
+  .btn-ghost {
+    border: 1px solid var(--border); background: #fff; border-radius: 8px;
+    padding: 6px 10px; font-size: 12px; cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .lib-status-tabs { margin: 0 0 12px; }
+  .pending-item {
+    margin-top: 8px; padding: 8px 10px; background: #fff8e6; border-radius: 8px;
+    font-size: 12px; color: #8a6d1d; word-break: break-all;
+  }
+  .status-pill {
+    display: inline-block; font-size: 11px; padding: 2px 6px; border-radius: 999px;
+    background: #eef2ff; color: #3b5bdb; margin-left: 6px;
+  }
+  .status-pill.inactive { background: #f4f4f5; color: #646a73; }
+  .status-pill.pending { background: #fff3bf; color: #8a6d1d; }
+
   /* Secondary tabs */
   .sec-tabs {
     display: flex; gap: 4px;
@@ -720,6 +750,20 @@
       账号库
       <span class="hint" id="libHint"></span>
     </div>
+    <div class="card add-monitor" id="addMonitorBox">
+      <div class="add-monitor-hd">添加对标监控</div>
+      <p class="hint" style="margin:0">粘贴抖音短链或主页链接。加入后会进待处理队列，我解析入库后明早早报一起采。</p>
+      <div class="add-monitor-row">
+        <input id="addMonitorInput" type="text" inputmode="url" autocomplete="off" placeholder="https://v.douyin.com/… 或 douyin.com/user/…" />
+        <button type="button" class="btn-primary" id="addMonitorBtn">加入监控</button>
+      </div>
+      <div class="hint" id="addMonitorMsg" style="margin-top:8px"></div>
+      <div id="pendingMonitorList"></div>
+    </div>
+    <div class="sec-tabs lib-status-tabs" role="tablist" aria-label="账号状态">
+      <button type="button" class="active" data-lib-status="active" role="tab">监控中</button>
+      <button type="button" data-lib-status="inactive" role="tab">未监控</button>
+    </div>
     <div id="categories"></div>
   </div>
 
@@ -855,6 +899,7 @@
     return posts;
   }
 
+  let libStatus = 'active';
   let expandedAccountKey = null; // douyin_id preferred, else nickname
   let feedAccountKey = ''; // '' = all
 
@@ -1377,38 +1422,22 @@
   }
 
   function renderCategories() {
+    const activeCount = D.target_count || (D.targets || []).length || 0;
+    const inactive = D.inactive_accounts || [];
+    const pending = (window.__pendingMonitorAdds || D.pending_monitor_adds || []).filter(it => (it.status || 'pending') !== 'done');
     document.getElementById('libHint').textContent =
-      `共 ${D.target_count} 个账号 · 点击行可查看该号入库作品`;
+      libStatus === 'inactive'
+        ? `未监控 ${inactive.length} 个 · 可点「重新监控」加回`
+        : `监控中 ${activeCount} 个 · 点击行可查看该号入库作品`;
+    renderPendingMonitorList(pending);
     const root = document.getElementById('categories');
+    if (libStatus === 'inactive') {
+      root.innerHTML = renderInactiveLibrary(inactive);
+      return;
+    }
     const cats = (D.categories || []).filter(c => c.count > 0);
     root.innerHTML = cats.map(c => {
-      const rows = (c.accounts || []).map(a => {
-        const key = accountKey(a);
-        const expanded = key && key === expandedAccountKey;
-        const profile = a.profile_url
-          ? `<a href="${escapeHtml(a.profile_url)}" target="_blank" rel="noopener">主页</a>`
-          : '';
-        const share = a.share_url
-          ? `<a href="${escapeHtml(a.share_url)}" target="_blank" rel="noopener">分享</a>`
-          : '';
-        const viewLabel = expanded ? '收起作品' : '查看作品';
-        const main = `<tr class="acct-row${expanded ? ' expanded' : ''}" data-acct-key="${escapeHtml(key)}" tabindex="0" role="button" aria-expanded="${expanded ? 'true' : 'false'}">
-          <td>
-            <div class="acct-name">${escapeHtml(a.nickname)}</div>
-            <div class="acct-id">@${escapeHtml(a.douyin_id || '')}</div>
-          </td>
-          <td>${dash(a.followers != null ? fmt(a.followers) : null)}</td>
-          <td>${dash(a.total_likes != null ? fmt(a.total_likes) : null)}</td>
-          <td>${dash(a.works_total)}</td>
-          <td>${a.stored_posts || 0}</td>
-          <td class="ops">
-            <button type="button" class="btn-view-posts" data-acct-key="${escapeHtml(key)}">${viewLabel}</button>
-            ${profile}${share}
-          </td>
-        </tr>`;
-        if (!expanded) return main;
-        return main + `<tr class="acct-posts-row"><td colspan="6">${accountPostsPanelHtml(a)}</td></tr>`;
-      }).join('');
+      const rows = (c.accounts || []).map(a => accountRowHtml(a, { status: 'active' })).join('');
       return `<div class="card cat-block">
         <div class="cat-hd" style="background:${c.bg};color:${c.fg}">
           <span>${escapeHtml(c.name)} · ${c.count} 账号</span>
@@ -1428,7 +1457,155 @@
           <tbody>${rows || '<tr><td colspan="6" class="empty-hint">无账号</td></tr>'}</tbody>
         </table>
       </div>`;
+    }).join('') || '<div class="empty-hint">暂无监控账号</div>';
+  }
+
+  function accountRowHtml(a, opts) {
+    const status = (opts && opts.status) || a.status || 'active';
+    const key = accountKey(a);
+    const expanded = status === 'active' && key && key === expandedAccountKey;
+    const profile = a.profile_url
+      ? `<a href="${escapeHtml(a.profile_url)}" target="_blank" rel="noopener">主页</a>`
+      : '';
+    const share = a.share_url
+      ? `<a href="${escapeHtml(a.share_url)}" target="_blank" rel="noopener">分享</a>`
+      : '';
+    const viewLabel = expanded ? '收起作品' : '查看作品';
+    const pill = status === 'inactive'
+      ? '<span class="status-pill inactive">未监控</span>'
+      : '';
+    const actions = status === 'inactive'
+      ? `<button type="button" class="btn-ghost btn-readd" data-url="${escapeHtml(a.share_url || a.profile_url || '')}" data-nickname="${escapeHtml(a.nickname || '')}">重新监控</button> ${profile}${share}`
+      : `<button type="button" class="btn-view-posts" data-acct-key="${escapeHtml(key)}">${viewLabel}</button>
+            <button type="button" class="btn-ghost btn-stop-monitor" data-acct-key="${escapeHtml(key)}" data-nickname="${escapeHtml(a.nickname || '')}" data-douyin-id="${escapeHtml(a.douyin_id || '')}" data-sec="${escapeHtml(a.sec_user_id || '')}" data-profile="${escapeHtml(a.profile_url || '')}" data-share="${escapeHtml(a.share_url || '')}">停止监控</button>
+            ${profile}${share}`;
+    const main = `<tr class="acct-row${expanded ? ' expanded' : ''}" data-acct-key="${escapeHtml(key)}" tabindex="0" role="button" aria-expanded="${expanded ? 'true' : 'false'}">
+          <td>
+            <div class="acct-name">${escapeHtml(a.nickname)}${pill}</div>
+            <div class="acct-id">@${escapeHtml(a.douyin_id || '')}</div>
+          </td>
+          <td>${dash(a.followers != null ? fmt(a.followers) : null)}</td>
+          <td>${dash(a.total_likes != null ? fmt(a.total_likes) : null)}</td>
+          <td>${dash(a.works_total)}</td>
+          <td>${a.stored_posts || 0}</td>
+          <td class="ops">${actions}</td>
+        </tr>`;
+    if (!expanded) return main;
+    return main + `<tr class="acct-posts-row"><td colspan="6">${accountPostsPanelHtml(a)}</td></tr>`;
+  }
+
+  function renderInactiveLibrary(inactive) {
+    if (!inactive.length) {
+      return '<div class="card" style="padding:16px"><div class="empty-hint">暂无未监控账号（从监控中停止的会落在这里）</div></div>';
+    }
+    const byCat = {};
+    inactive.forEach(a => {
+      const cat = a.category || '其他';
+      (byCat[cat] = byCat[cat] || []).push(a);
+    });
+    const order = (D.categories || []).map(c => c.name);
+    const names = order.filter(n => byCat[n]).concat(Object.keys(byCat).filter(n => !order.includes(n)));
+    return names.map(name => {
+      const accounts = byCat[name];
+      const meta = (D.categories || []).find(c => c.name === name) || { bg: '#F4F4F5', fg: '#646A73' };
+      const rows = accounts.map(a => accountRowHtml(a, { status: 'inactive' })).join('');
+      return `<div class="card cat-block">
+        <div class="cat-hd" style="background:${meta.bg};color:${meta.fg}">
+          <span>${escapeHtml(name)} · ${accounts.length} 账号</span>
+          <span class="right">未监控</span>
+        </div>
+        <table class="acct">
+          <thead>
+            <tr>
+              <th style="width:32%">账号</th>
+              <th>粉丝</th>
+              <th>获赞</th>
+              <th>作品</th>
+              <th>入库</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
     }).join('');
+  }
+
+  function renderPendingMonitorList(pending) {
+    const box = document.getElementById('pendingMonitorList');
+    if (!box) return;
+    if (!pending || !pending.length) { box.innerHTML = ''; return; }
+    box.innerHTML = pending.map(it => {
+      const label = escapeHtml(it.nickname || it.url || '');
+      const st = escapeHtml(it.status || 'pending');
+      return `<div class="pending-item"><span class="status-pill pending">${st === 'pending' ? '待入库' : st}</span> ${label}</div>`;
+    }).join('');
+  }
+
+  function looksLikeDouyinUrl(s) {
+    if (!s) return false;
+    const u = String(s).trim();
+    return /^https?:\/\//i.test(u);
+  }
+
+
+  function submitMonitorAdd(url, nickname) {
+    const raw = (url || '').trim();
+    const msg = document.getElementById('addMonitorMsg');
+    const setMsg = (text, err) => { if (msg) { msg.textContent = text || ''; msg.style.color = err ? '#c45656' : 'var(--muted)'; } };
+    if (!raw) { setMsg('请先粘贴链接', true); return; }
+    if (!looksLikeDouyinUrl(raw)) { setMsg('请粘贴抖音短链或主页 https 链接', true); return; }
+    const payload = { url: raw, nickname: nickname || '', requested_at: new Date().toISOString() };
+    const btn = document.getElementById('addMonitorBtn');
+    if (btn) btn.disabled = true;
+    const finish = (ok, text) => {
+      if (btn) btn.disabled = false;
+      setMsg(text, !ok);
+      if (ok) {
+        const input = document.getElementById('addMonitorInput');
+        if (input) input.value = '';
+        window.__pendingMonitorAdds = window.__pendingMonitorAdds || [];
+        window.__pendingMonitorAdds.unshift({ url: raw, nickname: nickname || '', status: 'pending', requested_at: payload.requested_at });
+        renderCategories();
+      }
+    };
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.addMonitorAccount) {
+      try {
+        window.webkit.messageHandlers.addMonitorAccount.postMessage(payload);
+        finish(true, '已提交，等待解析入库（通常很快）');
+      } catch (e) {
+        finish(false, '提交失败：' + (e && e.message ? e.message : e));
+      }
+      return;
+    }
+    // Browser / Pages fallback: keep local pending only
+    try {
+      const key = 'duibiao_pending_monitor_adds';
+      const arr = JSON.parse(localStorage.getItem(key) || '[]');
+      arr.unshift(Object.assign({ status: 'pending' }, payload));
+      localStorage.setItem(key, JSON.stringify(arr.slice(0, 50)));
+      finish(true, '已记在本机待处理（网页版）；Mac App 内提交才会写入监控队列');
+    } catch (e) {
+      finish(false, '无法保存：' + (e && e.message ? e.message : e));
+    }
+  }
+
+  function submitMonitorStop(a) {
+    const payload = {
+      action: 'stop',
+      nickname: a.nickname || '',
+      douyin_id: a.douyin_id || '',
+      sec_user_id: a.sec_user_id || '',
+      profile_url: a.profile_url || '',
+      share_url: a.share_url || '',
+      requested_at: new Date().toISOString(),
+    };
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.stopMonitorAccount) {
+      window.webkit.messageHandlers.stopMonitorAccount.postMessage(payload);
+      if (window.__duibiaoToast) window.__duibiaoToast('已提交停止监控', false);
+      return;
+    }
+    if (window.__duibiaoToast) window.__duibiaoToast('请在 Mac「对标账号监控」App 内操作停止监控', true);
   }
 
   function parseDay(s) {
@@ -1567,6 +1744,24 @@
   document.getElementById('categories').addEventListener('click', (e) => {
     const a = e.target.closest('a');
     if (a) return; // 主页/分享/抖音链接正常跳转
+    const re = e.target.closest('.btn-readd');
+    if (re) {
+      e.preventDefault();
+      submitMonitorAdd(re.getAttribute('data-url'), re.getAttribute('data-nickname'));
+      return;
+    }
+    const stop = e.target.closest('.btn-stop-monitor');
+    if (stop) {
+      e.preventDefault();
+      submitMonitorStop({
+        nickname: stop.getAttribute('data-nickname'),
+        douyin_id: stop.getAttribute('data-douyin-id'),
+        sec_user_id: stop.getAttribute('data-sec'),
+        profile_url: stop.getAttribute('data-profile'),
+        share_url: stop.getAttribute('data-share'),
+      });
+      return;
+    }
     const btn = e.target.closest('button.btn-view-posts');
     const row = e.target.closest('tr.acct-row');
     const key = (btn && btn.getAttribute('data-acct-key'))
@@ -1583,6 +1778,26 @@
     const key = row.getAttribute('data-acct-key');
     if (key) toggleAccountExpand(key);
   });
+
+
+  document.querySelectorAll('[data-lib-status]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-lib-status]').forEach(b => b.classList.toggle('active', b === btn));
+      libStatus = btn.getAttribute('data-lib-status') || 'active';
+      expandedAccountKey = '';
+      renderCategories();
+    });
+  });
+  const addBtn = document.getElementById('addMonitorBtn');
+  const addInput = document.getElementById('addMonitorInput');
+  if (addBtn) addBtn.addEventListener('click', () => submitMonitorAdd(addInput && addInput.value));
+  if (addInput) addInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submitMonitorAdd(addInput.value); }
+  });
+  try {
+    const localPending = JSON.parse(localStorage.getItem('duibiao_pending_monitor_adds') || '[]');
+    if (localPending.length) window.__pendingMonitorAdds = localPending;
+  } catch (e) {}
 
   const acctFilterEl = document.getElementById('acctFilter');
   if (acctFilterEl) {

@@ -1,5 +1,5 @@
 /* Service worker for installability on /duibiao-mobile/ */
-const CACHE = 'duibiao-shell-v2';
+const CACHE = 'duibiao-shell-v3';
 const BASE = '/duibiao-mobile';
 const SHELL = [
   BASE + '/',
@@ -24,6 +24,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+function networkFirst(req) {
+  return fetch(req).then((res) => {
+    const copy = res.clone();
+    caches.open(CACHE).then((c) => c.put(req, copy));
+    return res;
+  }).catch(() => caches.match(req));
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -31,14 +39,11 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (!url.pathname.startsWith('/duibiao-mobile')) return;
 
-  if (url.pathname.endsWith('/data.js') || url.pathname.endsWith('data.js')) {
-    event.respondWith(
-      fetch(req).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy));
-        return res;
-      }).catch(() => caches.match(req))
-    );
+  const path = url.pathname;
+  const isData = path.endsWith('/data.js') || path.endsWith('data.js');
+  const isHtml = path.endsWith('/index.html') || path === BASE || path === BASE + '/';
+  if (isData || isHtml) {
+    event.respondWith(networkFirst(req));
     return;
   }
 

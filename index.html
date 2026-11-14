@@ -400,6 +400,11 @@
     padding: 9px 12px; border-bottom: 1px solid #f0f1f3;
     vertical-align: middle;
   }
+  table.acct th.num, table.acct td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
   table.acct tr:last-child td { border-bottom: none; }
   table.acct tr:hover td { background: #fafbfc; }
   .acct-name { font-weight: 550; }
@@ -969,9 +974,17 @@
         <div class="empty-hint">暂无入库作品</div>
       </div>`;
     }
+    const totals = {
+      stored_posts: posts.length,
+      stored_plays: posts.some(p => p.plays != null)
+        ? posts.reduce((s, p) => s + (p.plays || 0), 0)
+        : null,
+      stored_likes: posts.reduce((s, p) => s + (p.likes || 0), 0),
+      stored_collects: posts.reduce((s, p) => s + (p.collects || 0), 0),
+    };
     return `<div class="acct-posts-panel" data-acct-key="${escapeHtml(key)}">
       <div class="acct-posts-hd">
-        <span><strong>${escapeHtml(a.nickname || '')}</strong> · 入库 ${posts.length} 条 · 按播放量高→低</span>
+        <span><strong>${escapeHtml(a.nickname || '')}</strong> · ${storedTotalsText(totals)} · 按播放量高→低</span>
       </div>
       <div class="acct-posts-list">${posts.map(p => postCardHtml(p, { hideNick: true })).join('')}</div>
     </div>`;
@@ -1075,6 +1088,16 @@
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
   const dash = (v) => (v == null || v === '' ? '<span class="dash">—</span>' : escapeHtml(String(v)));
+  const storedTotalsText = (a, opts) => {
+    opts = opts || {};
+    const n = a.stored_posts || 0;
+    const parts = [];
+    if (opts.includeCount !== false) parts.push(`入库 ${n} 条`);
+    parts.push(`播 ${fmt(a.stored_plays)}`);
+    parts.push(`赞 ${fmt(a.stored_likes || 0)}`);
+    parts.push(`藏 ${fmt(a.stored_collects || 0)}`);
+    return parts.join(' · ');
+  };
 
   function isDouyinCollectUrl(u) {
     if (!u) return false;
@@ -1474,20 +1497,21 @@
       return `<div class="card cat-block">
         <div class="cat-hd" style="background:${c.bg};color:${c.fg}">
           <span>${escapeHtml(c.name)} · ${c.count} 账号</span>
-          <span class="right">入库作品合计 ${c.stored_sum}</span>
+          <span class="right">${storedTotalsText({ stored_posts: c.stored_sum, stored_plays: c.stored_plays, stored_likes: c.stored_likes, stored_collects: c.stored_collects })}</span>
         </div>
         <table class="acct">
           <thead>
             <tr>
-              <th style="width:32%">账号</th>
-              <th>粉丝</th>
-              <th>获赞</th>
-              <th>作品</th>
-              <th>入库</th>
+              <th style="width:28%">账号</th>
+              <th class="num">粉丝</th>
+              <th class="num">入库</th>
+              <th class="num">播放</th>
+              <th class="num">点赞</th>
+              <th class="num">收藏</th>
               <th>操作</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="6" class="empty-hint">无账号</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="7" class="empty-hint">无账号</td></tr>'}</tbody>
         </table>
       </div>`;
     }).join('') || '<div class="empty-hint">暂无监控账号</div>';
@@ -1517,14 +1541,15 @@
             <div class="acct-name">${escapeHtml(a.nickname)}${pill}</div>
             <div class="acct-id">@${escapeHtml(a.douyin_id || '')}</div>
           </td>
-          <td>${dash(a.followers != null ? fmt(a.followers) : null)}</td>
-          <td>${dash(a.total_likes != null ? fmt(a.total_likes) : null)}</td>
-          <td>${dash(a.works_total)}</td>
-          <td>${a.stored_posts || 0}</td>
+          <td class="num">${dash(a.followers != null ? fmt(a.followers) : null)}</td>
+          <td class="num">${a.stored_posts || 0}</td>
+          <td class="num">${dash(a.stored_plays != null ? fmt(a.stored_plays) : (a.stored_posts ? null : '0'))}</td>
+          <td class="num">${fmt(a.stored_likes || 0)}</td>
+          <td class="num">${fmt(a.stored_collects || 0)}</td>
           <td class="ops">${actions}</td>
         </tr>`;
     if (!expanded) return main;
-    return main + `<tr class="acct-posts-row"><td colspan="6">${accountPostsPanelHtml(a)}</td></tr>`;
+    return main + `<tr class="acct-posts-row"><td colspan="7">${accountPostsPanelHtml(a)}</td></tr>`;
   }
 
   function renderInactiveLibrary(inactive) {
@@ -1550,11 +1575,12 @@
         <table class="acct">
           <thead>
             <tr>
-              <th style="width:32%">账号</th>
-              <th>粉丝</th>
-              <th>获赞</th>
-              <th>作品</th>
-              <th>入库</th>
+              <th style="width:28%">账号</th>
+              <th class="num">粉丝</th>
+              <th class="num">入库</th>
+              <th class="num">播放</th>
+              <th class="num">点赞</th>
+              <th class="num">收藏</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -1686,7 +1712,7 @@
     document.getElementById('footerNote').textContent =
       mode === 'shengyijing'
         ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 + 类目总榜 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
-        : `左侧日历点选日期查看当日采集 · 蓝点 = 有早报 · 粉丝/获赞/作品未采集时显示 — · ⌘R 刷新 App 数据`;
+        : `左侧日历点选日期查看当日采集 · 蓝点 = 有早报 · 入库播放/点赞/收藏为已采集作品合计 · ⌘R 刷新 App 数据`;
   }
 
   function setMode(next) {

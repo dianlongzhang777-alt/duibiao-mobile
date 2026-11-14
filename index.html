@@ -405,6 +405,9 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  table.acct th.freq, table.acct td.freq {
+    white-space: nowrap;
+  }
   table.acct th.sortable {
     cursor: pointer;
     user-select: none;
@@ -940,7 +943,7 @@
 
   let libStatus = 'active';
   const ACCT_SORT_STORAGE = 'duibiao_acct_sort';
-  const ACCT_SORT_OPTS = ['nickname', 'followers', 'posts', 'plays', 'likes', 'collects'];
+  const ACCT_SORT_OPTS = ['nickname', 'followers', 'posts', 'plays', 'likes', 'collects', 'freq'];
   const ACCT_SORT_FIELDS = {
     nickname: { field: 'nickname', type: 'text' },
     followers: { field: 'followers', type: 'num' },
@@ -948,6 +951,7 @@
     plays: { field: 'stored_plays', type: 'num' },
     likes: { field: 'stored_likes', type: 'num' },
     collects: { field: 'stored_collects', type: 'num' },
+    freq: { field: 'freq_per_week', type: 'num' },
   };
   function loadAcctSort() {
     try {
@@ -1008,6 +1012,7 @@
               ${th('plays', '播放', 'num', '')}
               ${th('likes', '点赞', 'num', '')}
               ${th('collects', '收藏', 'num', '')}
+              ${th('freq', '频次', 'freq', '')}
               <th>操作</th>
             </tr>`;
   }
@@ -1589,7 +1594,7 @@
           <thead>
             ${acctTableHeadHtml()}
           </thead>
-          <tbody>${rows || '<tr><td colspan="7" class="empty-hint">无账号</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="8" class="empty-hint">无账号</td></tr>'}</tbody>
         </table>
       </div>`;
     }).join('') || '<div class="empty-hint">暂无监控账号</div>';
@@ -1624,10 +1629,11 @@
           <td class="num">${dash(a.stored_plays != null ? fmt(a.stored_plays) : (a.stored_posts ? null : '0'))}</td>
           <td class="num">${fmt(a.stored_likes || 0)}</td>
           <td class="num">${fmt(a.stored_collects || 0)}</td>
+          <td class="freq"${a.freq_detail ? ` title="${escapeHtml(a.freq_detail)}"` : ''}>${escapeHtml(a.freq_label || '—')}</td>
           <td class="ops">${actions}</td>
         </tr>`;
     if (!expanded) return main;
-    return main + `<tr class="acct-posts-row"><td colspan="7">${accountPostsPanelHtml(a)}</td></tr>`;
+    return main + `<tr class="acct-posts-row"><td colspan="8">${accountPostsPanelHtml(a)}</td></tr>`;
   }
 
   function renderInactiveLibrary(inactive) {
@@ -1782,7 +1788,7 @@
     document.getElementById('footerNote').textContent =
       mode === 'shengyijing'
         ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 + 类目总榜 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
-        : `左侧日历点选日期查看当日采集 · 蓝点 = 有早报 · 入库播放/点赞/收藏为已采集作品合计 · 账号库表头可点升降序 · ⌘R 刷新 App 数据`;
+        : `左侧日历点选日期查看当日采集 · 蓝点 = 有早报 · 入库播放/点赞/收藏为已采集作品合计 · 频次按入库作品发布间隔推算 · 账号库表头可点升降序 · ⌘R 刷新 App 数据`;
   }
 
   function setMode(next) {

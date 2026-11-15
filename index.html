@@ -261,6 +261,65 @@
   }
   .kpi .l { color: var(--muted); font-size: 11px; margin-top: 2px; }
 
+  .day-report {
+    margin: 0 16px 12px;
+    padding: 12px 14px 10px;
+    background: #f6f8fc;
+    border: 1px solid #e8edf5;
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+  }
+  .day-report[hidden] { display: none; }
+  .day-report-hd {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 8px; flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .day-report-hd h3 {
+    margin: 0; font-size: 13px; font-weight: 650;
+  }
+  .day-report-hd .sub {
+    color: var(--muted); font-size: 11px;
+  }
+  .day-pick {
+    padding: 10px 0 8px;
+    border-top: 1px dashed #e4e8ee;
+  }
+  .day-pick:first-of-type { border-top: none; padding-top: 0; }
+  .day-pick .pick-acct {
+    font-weight: 650; font-size: 12px; color: var(--text);
+  }
+  .day-pick .pick-title {
+    font-weight: 550; margin: 2px 0 4px;
+    line-height: 1.45;
+  }
+  .day-pick .pick-metrics {
+    color: var(--muted); font-size: 12px;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    font-variant-numeric: tabular-nums;
+    margin: 0 0 6px;
+  }
+  .day-pick .pick-metrics span { white-space: nowrap; }
+  .day-pick .pick-row {
+    font-size: 12px;
+    margin-top: 3px;
+    line-height: 1.6;
+    color: #3c4149;
+  }
+  .day-pick .pick-row .k {
+    color: var(--muted); font-weight: 550; margin-right: 4px;
+  }
+  .day-report-summary, .day-report-advice {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #e4e8ee;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #3c4149;
+  }
+  .day-report-advice p, .day-report-summary p { margin: 0 0 8px; }
+  .day-report-advice p:last-child, .day-report-summary p:last-child { margin-bottom: 0; }
+
   .day-posts {
     padding: 4px 10px 14px;
     flex: 1;
@@ -721,6 +780,7 @@
     .day-card { min-height: 0; }
     .day-hd { padding: 10px 12px 8px; flex-wrap: wrap; gap: 6px; }
     .kpis { padding: 10px 12px 8px; gap: 6px; }
+    .day-report { margin: 0 12px 10px; padding: 10px 12px 8px; }
     .kpi { padding: 10px 8px; }
     .kpi .n { font-size: 20px; }
     .day-sort-bar { padding: 0 12px 10px; }
@@ -806,10 +866,11 @@
 
     <section class="card day-card" id="briefCard">
       <div class="day-hd">
-        <h2>当日采集 <span class="date-pill" id="briefDate">—</span></h2>
+        <h2>对标日报 <span class="date-pill" id="briefDate">—</span></h2>
         <span class="meta" id="dayHint" style="color:var(--muted);font-size:12px;"></span>
       </div>
       <div class="kpis" id="kpis"></div>
+      <div class="day-report" id="dayReport" hidden></div>
       <div class="day-sort-bar" id="daySortBar">
         <span class="day-sort-label">排序</span>
         <div class="seg" id="daySortSeg" role="group" aria-label="当日作品排序">
@@ -1432,6 +1493,91 @@
     });
   }
 
+  function formatBriefRichText(s) {
+    const t = escapeHtml(String(s || ''));
+    return t
+      .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, function (_, title, url) {
+        return '<a href="' + url + '" target="_blank" rel="noopener">' + title + '</a>';
+      })
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  }
+
+  function briefParagraphsHtml(text, className) {
+    const raw = String(text || '').trim();
+    if (!raw) return '';
+    const html = raw.split(/\n\s*\n/).map(function (p) {
+      return '<p>' + formatBriefRichText(p.replace(/\n/g, '')) + '</p>';
+    }).join('');
+    return '<div class="' + className + '">' + html + '</div>';
+  }
+
+  function pickMetricIcons(m) {
+    m = m || {};
+    const parts = [];
+    if (m.duration_sec != null) parts.push('时长 ' + m.duration_sec + 's');
+    if (m.plays != null) parts.push('▶ ' + fmt(m.plays));
+    if (m.likes != null) parts.push('👍 ' + fmt(m.likes));
+    if (m.comments != null) parts.push('💬 ' + fmt(m.comments));
+    if (m.collects != null) parts.push('⭐ ' + fmt(m.collects));
+    if (m.shares != null) parts.push('↪ ' + fmt(m.shares));
+    return parts.map(function (t) { return '<span>' + t + '</span>'; }).join('');
+  }
+
+  function dayReportHasContent(report) {
+    if (!report) return false;
+    return !!(
+      (report.picks && report.picks.length) ||
+      (report.advice && String(report.advice).trim()) ||
+      (report.summary && String(report.summary).trim())
+    );
+  }
+
+  function renderDayReport(report) {
+    const el = document.getElementById('dayReport');
+    if (!el) return;
+    if (!dayReportHasContent(report)) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    const picks = report.picks || [];
+    const hasPicks = picks.length > 0;
+    const title = hasPicks ? '今日可借鉴选题' : (report.advice ? '跟进建议' : '对标日报');
+    const sub = report.contentDate ? ('统计日 ' + report.contentDate) : '';
+    const pickHtml = picks.map(function (pick) {
+      const url = pick.url || '';
+      const titleHtml = url
+        ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(pick.title || '（无标题）') + '</a>'
+        : escapeHtml(pick.title || '（无标题）');
+      const bk = url ? baokuanBtn(url) : '';
+      const metrics = pickMetricIcons(pick.metrics);
+      const rows = [];
+      if (pick.note) {
+        rows.push('<div class="pick-row">' + formatBriefRichText(pick.note) + '</div>');
+      }
+      if (pick.angle) {
+        rows.push('<div class="pick-row"><span class="k">选题方向</span>' + formatBriefRichText(pick.angle) + '</div>');
+      }
+      if (pick.takeaway) {
+        rows.push('<div class="pick-row"><span class="k">可借鉴</span>' + formatBriefRichText(pick.takeaway) + '</div>');
+      }
+      return '<article class="day-pick">' +
+        '<div class="pick-acct">' + escapeHtml(pick.account || '') + '</div>' +
+        '<div class="pick-title">' + titleHtml + bk + '</div>' +
+        (metrics ? '<div class="pick-metrics">' + metrics + '</div>' : '') +
+        rows.join('') +
+        '</article>';
+    }).join('');
+    el.innerHTML =
+      '<div class="day-report-hd"><h3>' + title + '</h3>' +
+      (sub ? '<span class="sub">' + escapeHtml(sub) + '</span>' : '') +
+      '</div>' +
+      pickHtml +
+      (hasPicks ? briefParagraphsHtml(report.summary, 'day-report-summary') : '') +
+      briefParagraphsHtml(report.advice, 'day-report-advice');
+    el.hidden = false;
+  }
+
   function renderDay() {
     document.getElementById('briefDate').textContent = selectedDate || '—';
     const hasBrief = selectedDate && dataDays.has(selectedDate);
@@ -1449,10 +1595,13 @@
 
     const hint = document.getElementById('dayHint');
     const posts = sortPosts((D.posts_by_day && D.posts_by_day[selectedDate]) || []);
+    const report = (D.briefs_report && D.briefs_report[selectedDate]) || null;
+    renderDayReport(report);
     const daySortBar = document.getElementById('daySortBar');
     if (daySortBar) daySortBar.style.display = hasBrief ? '' : 'none';
     if (hasBrief) {
-      hint.textContent = posts.length ? `${posts.length} 条新增作品` : '有早报 · 无入库作品';
+      const contentBit = report && report.contentDate ? `统计日 ${report.contentDate} · ` : '';
+      hint.textContent = contentBit + (posts.length ? `${posts.length} 条新增作品` : '有早报 · 无入库作品');
     } else {
       hint.textContent = '当日无早报数据';
     }
@@ -2179,7 +2328,7 @@
     document.getElementById('footerNote').textContent =
       mode === 'shengyijing'
         ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 + 类目总榜 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
-        : `左侧日历点选日期查看当日采集 · 蓝点 = 有早报 · 入库播放/点赞/收藏为已采集作品合计 · 频次按入库作品发布间隔推算 · 账号库表头可点升降序 · ⌘R 刷新 App 数据`;
+        : `左侧日历点选日期查看对标日报 · 蓝点 = 有早报 · 选题建议在 KPI 下方 · 入库播放/点赞/收藏为已采集作品合计 · 频次按入库作品发布间隔推算 · 账号库表头可点升降序 · ⌘R 刷新 App 数据`;
   }
 
   function setMode(next) {

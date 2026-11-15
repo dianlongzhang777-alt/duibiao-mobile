@@ -643,19 +643,21 @@
     margin-top: 24px; text-align: center; color: var(--muted); font-size: 11px;
   }
 
-  /* Top mode switch: 对标 / 生意经 */
+  /* Top mode switch: 对标 / 生意经 / 账号库 */
   .mode-seg {
     display: inline-flex;
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 10px;
     overflow: hidden;
+    flex-shrink: 0;
   }
   .mode-seg button {
     border: none; background: transparent;
     padding: 7px 16px;
     font-size: 13px; font-weight: 600;
     cursor: pointer; color: var(--muted);
+    white-space: nowrap;
   }
   .mode-seg button.active { background: #1f2329; color: #fff; }
   .mode-seg button + button { border-left: 1px solid var(--border); }
@@ -772,7 +774,7 @@
     }
     .page-title h1 { font-size: 16px; }
     .page-title .meta { display: none; }
-    .mode-seg button { padding: 8px 18px; font-size: 14px; min-height: 36px; }
+    .mode-seg button { padding: 8px 12px; font-size: 13px; min-height: 36px; }
     .btn-ghost { padding: 8px 12px; min-height: 36px; }
     .main-grid { gap: 10px; margin-bottom: 12px; }
     .cal-card { padding: 12px 10px 10px; }
@@ -824,6 +826,7 @@
   }
   @media (max-width: 400px) {
     .page-title h1 { font-size: 15px; }
+    .mode-seg button { padding: 8px 8px; font-size: 13px; }
     .kpi .n { font-size: 18px; }
     .date-pill { font-size: 11px; padding: 2px 8px; }
   }
@@ -837,6 +840,7 @@
       <div class="mode-seg" role="tablist" aria-label="视图切换">
         <button type="button" class="active" data-mode="duibiao" role="tab">对标</button>
         <button type="button" data-mode="shengyijing" role="tab">生意经</button>
+        <button type="button" data-mode="library" role="tab">账号库</button>
       </div>
       <span class="meta" id="genMeta"></span>
     </div>
@@ -883,6 +887,46 @@
     </section>
   </div>
 
+  </div><!-- /mode-duibiao -->
+
+  <div class="mode-panel" id="mode-shengyijing">
+    <div class="main-grid">
+      <aside class="card cal-card" aria-label="生意经日历">
+        <div class="cal-hd">
+          <h2 id="syCalMonthLabel">—</h2>
+          <div class="cal-nav">
+            <button type="button" id="syCalPrev" title="上一月">‹</button>
+            <button type="button" id="syCalToday" title="回到有数据的最近一月" style="width:auto;padding:0 10px;font-size:12px;">本月</button>
+            <button type="button" id="syCalNext" title="下一月">›</button>
+          </div>
+        </div>
+        <div class="cal-weekdays">
+          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+        </div>
+        <div class="cal-grid" id="syCalGrid"></div>
+        <div class="cal-legend">
+          <span class="mark"><i></i> 有生意经采集</span>
+          <span id="syCalStat"></span>
+        </div>
+      </aside>
+
+      <section class="card day-card" id="syDayCard">
+        <div class="day-hd">
+          <h2>生意经榜单 <span class="date-pill" id="syBriefDate">—</span></h2>
+          <span class="meta" id="syDayHint" style="color:var(--muted);font-size:12px;"></span>
+        </div>
+        <div style="padding:10px 16px 0;">
+          <div class="sy-meta-row" id="syMeta"></div>
+          <div class="sy-chips" id="syChips" role="tablist" aria-label="品类"></div>
+        </div>
+        <div class="day-posts" style="max-height:none;padding:4px 12px 16px;">
+          <div class="sy-lists" id="syLists"></div>
+        </div>
+      </section>
+    </div>
+  </div><!-- /mode-shengyijing -->
+
+  <div class="mode-panel" id="mode-library">
   <div class="sec-tabs" role="tablist">
     <button type="button" class="active" data-tab="library" role="tab">对标账号库</button>
     <button type="button" data-tab="feed" role="tab">作品流</button>
@@ -937,44 +981,7 @@
     <div class="feed" id="feed"></div>
   </div>
 
-  </div><!-- /mode-duibiao -->
-
-  <div class="mode-panel" id="mode-shengyijing">
-    <div class="main-grid">
-      <aside class="card cal-card" aria-label="生意经日历">
-        <div class="cal-hd">
-          <h2 id="syCalMonthLabel">—</h2>
-          <div class="cal-nav">
-            <button type="button" id="syCalPrev" title="上一月">‹</button>
-            <button type="button" id="syCalToday" title="回到有数据的最近一月" style="width:auto;padding:0 10px;font-size:12px;">本月</button>
-            <button type="button" id="syCalNext" title="下一月">›</button>
-          </div>
-        </div>
-        <div class="cal-weekdays">
-          <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
-        </div>
-        <div class="cal-grid" id="syCalGrid"></div>
-        <div class="cal-legend">
-          <span class="mark"><i></i> 有生意经采集</span>
-          <span id="syCalStat"></span>
-        </div>
-      </aside>
-
-      <section class="card day-card" id="syDayCard">
-        <div class="day-hd">
-          <h2>生意经榜单 <span class="date-pill" id="syBriefDate">—</span></h2>
-          <span class="meta" id="syDayHint" style="color:var(--muted);font-size:12px;"></span>
-        </div>
-        <div style="padding:10px 16px 0;">
-          <div class="sy-meta-row" id="syMeta"></div>
-          <div class="sy-chips" id="syChips" role="tablist" aria-label="品类"></div>
-        </div>
-        <div class="day-posts" style="max-height:none;padding:4px 12px 16px;">
-          <div class="sy-lists" id="syLists"></div>
-        </div>
-      </section>
-    </div>
-  </div><!-- /mode-shengyijing -->
+  </div><!-- /mode-library -->
 
   <div class="footer-note" id="footerNote"></div>
 </div>
@@ -993,7 +1000,7 @@
     '火锅', '地方菜', '热门/特色菜', '自助餐', '饮品', '快餐小吃'
   ];
 
-  let mode = 'duibiao'; // duibiao | shengyijing
+  let mode = 'duibiao'; // duibiao | shengyijing | library
   let selectedDate = D.default_date || (D.dates && D.dates[D.dates.length - 1]) || null;
   let sySelectedDate = D.shengyijing_default_date
     || (D.shengyijing_dates && D.shengyijing_dates[D.shengyijing_dates.length - 1])
@@ -1242,6 +1249,7 @@
     const sel = document.getElementById('acctFilter');
     if (sel && sel.value !== feedAccountKey) sel.value = feedAccountKey;
     if (opts.switchTab) {
+      setMode('library');
       document.querySelectorAll('.sec-tabs button[data-tab]').forEach(b => {
         b.classList.toggle('active', b.getAttribute('data-tab') === 'feed');
       });
@@ -2328,7 +2336,9 @@
     document.getElementById('footerNote').textContent =
       mode === 'shengyijing'
         ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 + 类目总榜 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
-        : `左侧日历点选日期查看对标日报 · 蓝点 = 有早报 · 选题建议在 KPI 下方 · 入库播放/点赞/收藏为已采集作品合计 · 频次按入库作品发布间隔推算 · 账号库表头可点升降序 · ⌘R 刷新 App 数据`;
+        : mode === 'library'
+          ? `账号库 · 对标账号库 / 作品流 · 添加监控进待处理队列 · 监控中/未监控可切换 · 表头可点升降序 · 作品流可按时间范围、播放/互动、账号筛选 · ⌘R 刷新 App 数据`
+          : `左侧日历点选日期查看对标日报 · 蓝点 = 有早报 · 选题建议在 KPI 下方 · 入库播放/点赞/收藏为已采集作品合计 · 频次按入库作品发布间隔推算 · ⌘R 刷新 App 数据`;
   }
 
   function setMode(next) {
@@ -2338,6 +2348,7 @@
     });
     document.getElementById('mode-duibiao').classList.toggle('active', mode === 'duibiao');
     document.getElementById('mode-shengyijing').classList.toggle('active', mode === 'shengyijing');
+    document.getElementById('mode-library').classList.toggle('active', mode === 'library');
     renderMeta();
     if (mode === 'shengyijing') {
       renderSyCalendar();

@@ -340,6 +340,47 @@
     font-size: 13px; color: var(--muted); margin: 0 0 10px;
   }
 
+  .cat-edit-bar { margin: 0 0 12px; }
+  .cat-edit-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+  .cat-edit-row input {
+    flex: 1; min-width: 180px; max-width: 320px;
+    padding: 7px 10px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 13px; background: #fff;
+  }
+  .cat-hd-left { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
+  .cat-hd-actions { display: inline-flex; gap: 6px; margin-left: 8px; }
+  .cat-hd-actions button {
+    border: 1px solid rgba(0,0,0,.12);
+    background: rgba(255,255,255,.72);
+    color: inherit;
+    border-radius: 6px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 550;
+    cursor: pointer;
+    line-height: 1.6;
+  }
+  .cat-hd-actions button:hover { background: #fff; }
+  .cat-rename-input {
+    font: inherit; font-weight: 650; font-size: 13px;
+    border: 1px solid rgba(0,0,0,.18);
+    border-radius: 6px; padding: 1px 6px; width: 9em;
+    color: inherit; background: rgba(255,255,255,.9);
+  }
+  select.cat-move {
+    font-size: 11px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 6px;
+    background: #fff;
+    color: var(--text);
+    margin-right: 6px;
+    max-width: 7.8em;
+    cursor: pointer;
+    vertical-align: middle;
+  }
+  select.cat-move:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
   .pending-item {
     margin-top: 8px; padding: 8px 10px; background: #fff8e6; border-radius: 8px;
     font-size: 12px; color: #8a6d1d; word-break: break-all;
@@ -806,6 +847,7 @@
       <button type="button" data-lib-status="inactive" role="tab" id="libStatusInactive">未监控<span class="n" id="libCountInactive"></span></button>
     </div>
     <div class="lib-panel-title" id="libPanelTitle"></div>
+    <div id="catEditBar" class="cat-edit-bar"></div>
     <div id="categories"></div>
   </div>
 
@@ -1018,6 +1060,27 @@
   }
   let expandedAccountKey = null; // douyin_id preferred, else nickname
   let feedAccountKey = ''; // '' = all
+  const FALLBACK_CATEGORY = '其他';
+  const CAT_PASTELS = [
+    ['#FDE2E2', '#C45656'],
+    ['#E1F3D8', '#529B2E'],
+    ['#E9F1FE', '#3370FF'],
+    ['#F0F5C8', '#7A8B1E'],
+    ['#FDF6EC', '#B88230'],
+    ['#FCE8F0', '#C4568A'],
+    ['#F4F4F5', '#646A73'],
+    ['#E8F3F1', '#2A9B86'],
+    ['#EDE4FF', '#6B4EBF'],
+    ['#FFE8D6', '#C26A2D'],
+    ['#D6F0FF', '#1A7A9C'],
+    ['#F3E8D8', '#8A5A2B'],
+    ['#E6F4EA', '#3B7A4A'],
+    ['#F8E6F0', '#A14A7A'],
+    ['#E4EEFF', '#3D5A99'],
+    ['#FFF3D6', '#A37B12'],
+  ];
+  let catAssignments = Object.assign({}, D.category_assignments || {});
+  let catRenaming = null; // category name currently being renamed
 
   function accountKey(a) {
     if (!a) return '';
@@ -1555,6 +1618,315 @@
     return merged.map((it, i) => Object.assign({}, it, { rank: i + 1 }));
   }
 
+
+  function canEditCategories() {
+    try {
+      return !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.saveAccountCategories);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isoPlus8(d) {
+    d = d || new Date();
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(d);
+    const g = (t) => (parts.find(p => p.type === t) || {}).value || '00';
+    return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}:${g('second')}+08:00`;
+  }
+
+  function pickUnusedPastel(existing) {
+    const used = new Set((existing || []).map(c => String(c.bg || '').toUpperCase()));
+    for (let i = 0; i < CAT_PASTELS.length; i++) {
+      const bg = CAT_PASTELS[i][0];
+      if (!used.has(bg.toUpperCase())) return { bg: bg, fg: CAT_PASTELS[i][1] };
+    }
+    const i = (existing || []).length % CAT_PASTELS.length;
+    return { bg: CAT_PASTELS[i][0], fg: CAT_PASTELS[i][1] };
+  }
+
+  function categoryNames() {
+    return (D.categories || []).map(c => c.name);
+  }
+
+  function categoryExists(name) {
+    return categoryNames().indexOf(name) !== -1;
+  }
+
+  function sumField(accounts, key) {
+    return (accounts || []).reduce((s, a) => s + (Number(a[key]) || 0), 0);
+  }
+
+  function sumOptionalField(accounts, key) {
+    let any = false;
+    let s = 0;
+    (accounts || []).forEach(a => {
+      if (a[key] != null && a[key] !== '') {
+        any = true;
+        s += Number(a[key]) || 0;
+      }
+    });
+    return any ? s : null;
+  }
+
+  function applyAssignmentToAccount(a) {
+    if (!a) return;
+    const sid = (a.sec_user_id || '').trim();
+    const names = categoryNames();
+    if (sid && catAssignments[sid] && names.indexOf(catAssignments[sid]) !== -1) {
+      a.category = catAssignments[sid];
+      return;
+    }
+    if (a.category && names.indexOf(a.category) !== -1) return;
+    a.category = names.indexOf(FALLBACK_CATEGORY) !== -1 ? FALLBACK_CATEGORY : (names[0] || FALLBACK_CATEGORY);
+  }
+
+  function allActiveLibraryAccounts() {
+    const map = new Map();
+    const put = (a) => {
+      if (!a) return;
+      const k = (a.sec_user_id || '').trim() || accountKey(a);
+      if (!k) return;
+      if (!map.has(k)) map.set(k, a);
+    };
+    (D.categories || []).forEach(c => (c.accounts || []).forEach(put));
+    (D.targets || []).forEach(put);
+    return Array.from(map.values());
+  }
+
+  function rebuildCategoryGroups() {
+    const accounts = allActiveLibraryAccounts();
+    accounts.forEach(applyAssignmentToAccount);
+    (D.targets || []).forEach(applyAssignmentToAccount);
+    (D.inactive_accounts || []).forEach(applyAssignmentToAccount);
+    const byCat = {};
+    accounts.forEach(a => {
+      const name = a.category || FALLBACK_CATEGORY;
+      (byCat[name] = byCat[name] || []).push(a);
+    });
+    D.categories = (D.categories || []).map(c => {
+      const accs = byCat[c.name] || [];
+      return Object.assign({}, c, {
+        count: accs.length,
+        accounts: accs,
+        stored_sum: sumField(accs, 'stored_posts'),
+        stored_likes: sumField(accs, 'stored_likes'),
+        stored_comments: sumField(accs, 'stored_comments'),
+        stored_collects: sumField(accs, 'stored_collects'),
+        stored_shares: sumField(accs, 'stored_shares'),
+        stored_interactions: sumField(accs, 'stored_interactions'),
+        stored_plays: sumOptionalField(accs, 'stored_plays'),
+      });
+    });
+    D.category_assignments = Object.assign({}, catAssignments);
+  }
+
+  function persistAccountCategories() {
+    const payload = {
+      updated_at: isoPlus8(),
+      categories: (D.categories || []).map(c => ({ name: c.name, bg: c.bg, fg: c.fg })),
+      assignments: Object.assign({}, catAssignments),
+    };
+    D.category_assignments = payload.assignments;
+    if (!canEditCategories()) return;
+    try {
+      window.webkit.messageHandlers.saveAccountCategories.postMessage(payload);
+    } catch (e) {
+      if (window.__duibiaoToast) window.__duibiaoToast('分类保存失败', true);
+    }
+  }
+
+  function applyCategoryConfig(cfg) {
+    if (!cfg || !Array.isArray(cfg.categories) || !cfg.categories.length) return;
+    const cleaned = [];
+    const seen = {};
+    cfg.categories.forEach(c => {
+      const name = String((c && c.name) || '').trim();
+      if (!name || seen[name]) return;
+      seen[name] = true;
+      cleaned.push({
+        name: name,
+        bg: (c && c.bg) || '#F4F4F5',
+        fg: (c && c.fg) || '#646A73',
+        count: 0,
+        accounts: [],
+      });
+    });
+    if (!cleaned.some(c => c.name === FALLBACK_CATEGORY)) {
+      cleaned.push({ name: FALLBACK_CATEGORY, bg: '#F4F4F5', fg: '#646A73', count: 0, accounts: [] });
+    }
+    const asg = {};
+    if (cfg.assignments && typeof cfg.assignments === 'object') {
+      Object.keys(cfg.assignments).forEach(k => {
+        const v = String(cfg.assignments[k] || '').trim();
+        if (k && v) asg[k] = v;
+      });
+    }
+    catAssignments = asg;
+    const prevByName = {};
+    (D.categories || []).forEach(c => { prevByName[c.name] = c; });
+    D.categories = cleaned.map(c => {
+      const prev = prevByName[c.name];
+      return prev ? Object.assign({}, prev, { name: c.name, bg: c.bg, fg: c.fg }) : c;
+    });
+    rebuildCategoryGroups();
+  }
+
+  window.__applyAccountCategories = function (cfg) {
+    applyCategoryConfig(cfg);
+    renderCategories();
+  };
+
+  function normalizeCatName(raw) {
+    return String(raw || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function addCustomCategory(rawName) {
+    const name = normalizeCatName(rawName);
+    if (!name) {
+      if (window.__duibiaoToast) window.__duibiaoToast('请填写大类名称', true);
+      return false;
+    }
+    if (name.length > 20) {
+      if (window.__duibiaoToast) window.__duibiaoToast('大类名称请不超过 20 字', true);
+      return false;
+    }
+    if (categoryExists(name)) {
+      if (window.__duibiaoToast) window.__duibiaoToast('已有同名大类', true);
+      return false;
+    }
+    const color = pickUnusedPastel(D.categories || []);
+    D.categories = (D.categories || []).slice();
+    const otherIdx = D.categories.findIndex(c => c.name === FALLBACK_CATEGORY);
+    const row = {
+      name: name,
+      bg: color.bg,
+      fg: color.fg,
+      count: 0,
+      accounts: [],
+      stored_sum: 0,
+      stored_likes: 0,
+      stored_comments: 0,
+      stored_collects: 0,
+      stored_shares: 0,
+      stored_interactions: 0,
+      stored_plays: null,
+    };
+    if (otherIdx >= 0) D.categories.splice(otherIdx, 0, row);
+    else D.categories.push(row);
+    persistAccountCategories();
+    renderCategories();
+    return true;
+  }
+
+  function renameCategory(oldName, rawName) {
+    if (oldName === FALLBACK_CATEGORY) {
+      if (window.__duibiaoToast) window.__duibiaoToast('「其他」不可改名', true);
+      return false;
+    }
+    const name = normalizeCatName(rawName);
+    if (!name || name === oldName) return false;
+    if (name.length > 20) {
+      if (window.__duibiaoToast) window.__duibiaoToast('大类名称请不超过 20 字', true);
+      return false;
+    }
+    if (categoryExists(name)) {
+      if (window.__duibiaoToast) window.__duibiaoToast('已有同名大类', true);
+      return false;
+    }
+    D.categories = (D.categories || []).map(c => c.name === oldName ? Object.assign({}, c, { name: name }) : c);
+    Object.keys(catAssignments).forEach(k => {
+      if (catAssignments[k] === oldName) catAssignments[k] = name;
+    });
+    const retarget = (a) => { if (a && a.category === oldName) a.category = name; };
+    allActiveLibraryAccounts().forEach(retarget);
+    (D.targets || []).forEach(retarget);
+    (D.inactive_accounts || []).forEach(retarget);
+    rebuildCategoryGroups();
+    persistAccountCategories();
+    renderCategories();
+    return true;
+  }
+
+  function deleteCategory(name) {
+    if (name === FALLBACK_CATEGORY) {
+      if (window.__duibiaoToast) window.__duibiaoToast('「其他」不可删除', true);
+      return false;
+    }
+    if (!categoryExists(name)) return false;
+    const cat = (D.categories || []).find(c => c.name === name);
+    const n = cat && cat.count ? cat.count : 0;
+    const ok = window.confirm(n
+      ? `删除「${name}」后，其中 ${n} 个账号将归入「其他」。确定删除？`
+      : `确定删除大类「${name}」？`);
+    if (!ok) return false;
+    if (!categoryExists(FALLBACK_CATEGORY)) {
+      D.categories.push({ name: FALLBACK_CATEGORY, bg: '#F4F4F5', fg: '#646A73', count: 0, accounts: [] });
+    }
+    Object.keys(catAssignments).forEach(k => {
+      if (catAssignments[k] === name) catAssignments[k] = FALLBACK_CATEGORY;
+    });
+    const move = (a) => {
+      if (!a || a.category !== name) return;
+      a.category = FALLBACK_CATEGORY;
+      const sid = (a.sec_user_id || '').trim();
+      if (sid) catAssignments[sid] = FALLBACK_CATEGORY;
+    };
+    allActiveLibraryAccounts().forEach(move);
+    (D.targets || []).forEach(move);
+    (D.inactive_accounts || []).forEach(move);
+    D.categories = (D.categories || []).filter(c => c.name !== name);
+    rebuildCategoryGroups();
+    persistAccountCategories();
+    renderCategories();
+    return true;
+  }
+
+  function moveAccountToCategory(secUserId, newCat, status) {
+    const sid = (secUserId || '').trim();
+    if (!sid || !categoryExists(newCat)) return false;
+    catAssignments[sid] = newCat;
+    const retarget = (a) => {
+      if (a && (a.sec_user_id || '').trim() === sid) a.category = newCat;
+    };
+    allActiveLibraryAccounts().forEach(retarget);
+    (D.targets || []).forEach(retarget);
+    (D.inactive_accounts || []).forEach(retarget);
+    rebuildCategoryGroups();
+    persistAccountCategories();
+    renderCategories();
+    return true;
+  }
+
+  function renderCatEditBar() {
+    const bar = document.getElementById('catEditBar');
+    if (!bar) return;
+    if (canEditCategories()) {
+      bar.innerHTML = `<div class="cat-edit-row">
+        <input id="newCatName" type="text" maxlength="20" placeholder="新增大类名称，例如：湘菜" />
+        <button type="button" class="btn-ghost" id="addCatBtn">添加大类</button>
+      </div>
+      <div class="hint">可在每行把账号改到其他分类。删除大类后账号归入「其他」。「其他」不可改名或删除。</div>`;
+    } else {
+      bar.innerHTML = `<div class="hint">分类以当前看板数据为准。添加大类或调整账号分类，请在 Mac「对标账号监控」App 中操作。</div>`;
+    }
+  }
+
+  function categoryMoveSelectHtml(a) {
+    if (!canEditCategories()) return '';
+    const sid = (a.sec_user_id || '').trim();
+    if (!sid) return '';
+    const cur = a.category || FALLBACK_CATEGORY;
+    const opts = categoryNames().map(n =>
+      `<option value="${escapeHtml(n)}"${n === cur ? ' selected' : ''}>${escapeHtml(n)}</option>`
+    ).join('');
+    return `<select class="cat-move" data-sec="${escapeHtml(sid)}" aria-label="移动到其他分类">${opts}</select>`;
+  }
+
   function renderCategories() {
     const activeCount = D.target_count || (D.targets || []).length || 0;
     const inactive = D.inactive_accounts || [];
@@ -1577,17 +1949,18 @@
         ? `未监控 ${inactive.length} 个`
         : `监控中 ${activeCount} 个`;
     renderPendingMonitorList(pending);
+    renderCatEditBar();
     const root = document.getElementById('categories');
     if (libStatus === 'inactive') {
       root.innerHTML = renderInactiveLibrary(inactive);
       return;
     }
-    const cats = (D.categories || []).filter(c => c.count > 0);
+    const cats = D.categories || [];
     root.innerHTML = cats.map(c => {
       const rows = sortAccounts(c.accounts || []).map(a => accountRowHtml(a, { status: 'active' })).join('');
       return `<div class="card cat-block">
         <div class="cat-hd" style="background:${c.bg};color:${c.fg}">
-          <span>${escapeHtml(c.name)} · ${c.count} 账号</span>
+          <span class="cat-hd-left">${categoryHeaderLabelHtml(c)}</span>
           <span class="right">${storedTotalsText({ stored_posts: c.stored_sum, stored_plays: c.stored_plays, stored_likes: c.stored_likes, stored_collects: c.stored_collects })}</span>
         </div>
         <table class="acct">
@@ -1600,7 +1973,24 @@
     }).join('') || '<div class="empty-hint">暂无监控账号</div>';
   }
 
+  function categoryHeaderLabelHtml(c) {
+    const editable = canEditCategories();
+    const locked = c.name === FALLBACK_CATEGORY;
+    if (editable && catRenaming === c.name && !locked) {
+      return `<input class="cat-rename-input" data-cat-rename="${escapeHtml(c.name)}" value="${escapeHtml(c.name)}" maxlength="20" aria-label="重命名大类" />
+            <span>· ${c.count} 账号</span>`;
+    }
+    const actions = editable
+      ? `<span class="cat-hd-actions">
+            ${locked ? '' : `<button type="button" class="btn-cat-rename" data-cat-name="${escapeHtml(c.name)}">重命名</button>`}
+            ${locked ? '' : `<button type="button" class="btn-cat-delete" data-cat-name="${escapeHtml(c.name)}">删除</button>`}
+          </span>`
+      : '';
+    return `<span>${escapeHtml(c.name)} · ${c.count} 账号</span>${actions}`;
+  }
+
   function accountRowHtml(a, opts) {
+
     const status = (opts && opts.status) || a.status || 'active';
     const key = accountKey(a);
     const expanded = status === 'active' && key && key === expandedAccountKey;
@@ -1614,9 +2004,10 @@
     const pill = status === 'inactive'
       ? '<span class="status-pill inactive">未监控</span>'
       : '';
+    const mover = categoryMoveSelectHtml(a);
     const actions = status === 'inactive'
-      ? `<button type="button" class="btn-ghost btn-readd" data-url="${escapeHtml(a.share_url || a.profile_url || '')}" data-nickname="${escapeHtml(a.nickname || '')}">重新监控</button> ${profile}${share}`
-      : `<button type="button" class="btn-view-posts" data-acct-key="${escapeHtml(key)}">${viewLabel}</button>
+      ? `${mover}<button type="button" class="btn-ghost btn-readd" data-url="${escapeHtml(a.share_url || a.profile_url || '')}" data-nickname="${escapeHtml(a.nickname || '')}">重新监控</button> ${profile}${share}`
+      : `${mover}<button type="button" class="btn-view-posts" data-acct-key="${escapeHtml(key)}">${viewLabel}</button>
             <button type="button" class="btn-ghost btn-stop-monitor" data-acct-key="${escapeHtml(key)}" data-nickname="${escapeHtml(a.nickname || '')}" data-douyin-id="${escapeHtml(a.douyin_id || '')}" data-sec="${escapeHtml(a.sec_user_id || '')}" data-profile="${escapeHtml(a.profile_url || '')}" data-share="${escapeHtml(a.share_url || '')}">停止监控</button>
             ${profile}${share}`;
     const main = `<tr class="acct-row${expanded ? ' expanded' : ''}" data-acct-key="${escapeHtml(key)}">
@@ -1653,7 +2044,7 @@
       const rows = sortAccounts(accounts).map(a => accountRowHtml(a, { status: 'inactive' })).join('');
       return `<div class="card cat-block">
         <div class="cat-hd" style="background:${meta.bg};color:${meta.fg}">
-          <span>${escapeHtml(name)} · ${accounts.length} 账号</span>
+          <span class="cat-hd-left">${categoryHeaderLabelHtml(Object.assign({}, meta, { name: name, count: accounts.length }))}</span>
           <span class="right">未监控</span>
         </div>
         <table class="acct">
@@ -1878,6 +2269,25 @@
   document.getElementById('btnRefresh').addEventListener('click', () => renderAll());
 
   document.getElementById('categories').addEventListener('click', (e) => {
+    const renameBtn = e.target.closest('.btn-cat-rename');
+    if (renameBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!canEditCategories()) return;
+      catRenaming = renameBtn.getAttribute('data-cat-name');
+      renderCategories();
+      const input = document.querySelector('.cat-rename-input');
+      if (input) { input.focus(); input.select(); }
+      return;
+    }
+    const delBtn = e.target.closest('.btn-cat-delete');
+    if (delBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!canEditCategories()) return;
+      deleteCategory(delBtn.getAttribute('data-cat-name'));
+      return;
+    }
     const sortTh = e.target.closest('th[data-acct-sort]');
     if (sortTh) {
       e.preventDefault();
@@ -1912,7 +2322,31 @@
     e.stopPropagation();
     toggleAccountExpand(key);
   });
+  document.getElementById('categories').addEventListener('change', (e) => {
+    const sel = e.target.closest('select.cat-move');
+    if (!sel) return;
+    e.stopPropagation();
+    if (!canEditCategories()) return;
+    moveAccountToCategory(sel.getAttribute('data-sec'), sel.value);
+  });
   document.getElementById('categories').addEventListener('keydown', (e) => {
+    const renameInput = e.target.closest('.cat-rename-input');
+    if (renameInput) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const oldName = renameInput.getAttribute('data-cat-rename');
+        const next = renameInput.value;
+        catRenaming = null;
+        if (!renameCategory(oldName, next)) renderCategories();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        catRenaming = null;
+        renderCategories();
+      }
+      return;
+    }
     if (e.key !== 'Enter' && e.key !== ' ') return;
     const sortTh = e.target.closest('th[data-acct-sort]');
     if (sortTh) {
@@ -1926,6 +2360,37 @@
     const key = btn.getAttribute('data-acct-key');
     if (key) toggleAccountExpand(key);
   });
+  document.getElementById('categories').addEventListener('focusout', (e) => {
+    const renameInput = e.target.closest && e.target.closest('.cat-rename-input');
+    if (!renameInput) return;
+    const oldName = renameInput.getAttribute('data-cat-rename');
+    const next = renameInput.value;
+    // Defer so Enter handler can clear catRenaming first
+    setTimeout(() => {
+      if (catRenaming !== oldName) return;
+      catRenaming = null;
+      if (!renameCategory(oldName, next)) renderCategories();
+    }, 0);
+  });
+
+  const catEditBar = document.getElementById('catEditBar');
+  if (catEditBar) {
+    catEditBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('#addCatBtn');
+      if (!btn) return;
+      e.preventDefault();
+      if (!canEditCategories()) return;
+      const input = document.getElementById('newCatName');
+      if (addCustomCategory(input && input.value) && input) input.value = '';
+    });
+    catEditBar.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      if (!e.target || e.target.id !== 'newCatName') return;
+      e.preventDefault();
+      if (!canEditCategories()) return;
+      if (addCustomCategory(e.target.value)) e.target.value = '';
+    });
+  }
 
 
   document.querySelectorAll('.lib-status-seg button[data-lib-status]').forEach(btn => {
@@ -1975,6 +2440,16 @@
 
   syncSortButtons();
   renderAll();
+  // Overlay live Mac assignments if present (keeps ⌘R in sync before the next builder run)
+  fetch('account-categories.json', { cache: 'no-store' }).then(res => {
+    if (!res.ok) return null;
+    return res.json();
+  }).then(cfg => {
+    if (cfg) {
+      applyCategoryConfig(cfg);
+      renderCategories();
+    }
+  }).catch(() => {});
 })();
 </script>
 

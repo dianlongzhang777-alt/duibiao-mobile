@@ -761,6 +761,16 @@
   .sy-role.daren { background: #eef2ff; color: #3b5bdb; }
   .sy-role.shangjia { background: #e6f7ed; color: #0f7a45; }
   .sy-col.sy-total { grid-column: 1 / -1; }
+  #syOverallBoard { margin: 0 16px 12px; }
+  #syOverallBoard .pick-acct {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  }
+  #syOverallBoard .pick-acct .sy-pill {
+    padding: 0 7px; font-size: 10px;
+  }
+  #syOverallBoard .pick-store {
+    font-size: 12px; color: var(--muted); margin: 0 0 4px;
+  }
 
   /* —— Mobile / foldable (OPPO Find N2 ~360–412px folded) —— */
   @media (max-width: 640px) {
@@ -789,6 +799,7 @@
     .day-hd { padding: 10px 12px 8px; flex-wrap: wrap; gap: 6px; }
     .kpis { padding: 10px 12px 8px; gap: 6px; }
     .day-report { margin: 0 12px 10px; padding: 10px 12px 8px; }
+    #syOverallBoard { margin: 0 12px 10px; }
     .kpi { padding: 10px 8px; }
     .kpi .n { font-size: 20px; }
     .day-sort-bar { padding: 0 12px 10px; }
@@ -923,6 +934,9 @@
         </div>
         <div style="padding:10px 16px 0;">
           <div class="sy-meta-row" id="syMeta"></div>
+        </div>
+        <div class="day-report" id="syOverallBoard" hidden></div>
+        <div style="padding:0 16px 0;">
           <div class="sy-chips" id="syChips" role="tablist" aria-label="品类"></div>
         </div>
         <div class="day-posts" style="max-height:none;padding:4px 12px 16px;">
@@ -1696,6 +1710,74 @@
     </div>`;
   }
 
+  function syOverallMetricIcons(pick) {
+    pick = pick || {};
+    const parts = [];
+    if (pick.transactionIndex != null && pick.transactionIndex !== '') {
+      parts.push('指数 ' + pick.transactionIndex);
+    }
+    const plays = pick.playCount != null ? pick.playCount : (pick.metrics && pick.metrics.plays);
+    const likes = pick.diggCount != null ? pick.diggCount : (pick.likes != null ? pick.likes : (pick.metrics && pick.metrics.likes));
+    const collects = pick.collectCount != null ? pick.collectCount : (pick.collects != null ? pick.collects : (pick.metrics && pick.metrics.collects));
+    const shares = pick.shareCount != null ? pick.shareCount : (pick.shares != null ? pick.shares : (pick.metrics && pick.metrics.shares));
+    if (plays != null) parts.push('▶ ' + fmt(plays));
+    if (likes != null) parts.push('👍 ' + fmt(likes));
+    if (collects != null) parts.push('⭐ ' + fmt(collects));
+    if (shares != null) parts.push('↪ ' + fmt(shares));
+    return parts.map(function (t) { return '<span>' + t + '</span>'; }).join('');
+  }
+
+  function renderSyOverallBoard(report) {
+    const el = document.getElementById('syOverallBoard');
+    if (!el) return;
+    const picks = (report && report.picks) || [];
+    const summary = report && report.summary ? String(report.summary).trim() : '';
+    if (!picks.length && !summary) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    const subBits = [];
+    if (report && report.statDate) subBits.push('统计日 ' + report.statDate);
+    if (picks.length) subBits.push(picks.length + ' 条精选');
+    const pickHtml = picks.map(function (pick) {
+      const url = pick.url || pick.douyinUrl || (pick.awemeId ? ('https://www.douyin.com/video/' + pick.awemeId) : '');
+      const titleHtml = url
+        ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + escapeHtml(pick.title || '（无标题）') + '</a>'
+        : escapeHtml(pick.title || '（无标题）');
+      const bk = url ? baokuanBtn(url) : '';
+      const role = pick.role
+        ? '<span class="sy-role ' + (pick.role === '商家' ? 'shangjia' : 'daren') + '">' + escapeHtml(pick.role) + '</span>'
+        : '';
+      const cat = pick.category
+        ? '<span class="sy-pill">' + escapeHtml(pick.category) + '</span>'
+        : '';
+      const isNew = pick.isNew === true || pick.rankLabel === '新上榜';
+      const badge = isNew ? '<span class="rank-label">新上榜</span>' : '';
+      const metrics = syOverallMetricIcons(pick);
+      const store = pick.storeOrProduct
+        ? '<div class="pick-store">店/品 ' + escapeHtml(pick.storeOrProduct) + '</div>'
+        : '';
+      const reason = pick.reason
+        ? '<div class="pick-row"><span class="k">好的理由</span>' + formatBriefRichText(pick.reason) + '</div>'
+        : '';
+      return '<article class="day-pick">' +
+        '<div class="pick-acct">' + role + cat + badge + escapeHtml(pick.creator || '') + '</div>' +
+        '<div class="pick-title">' + titleHtml + bk + '</div>' +
+        store +
+        (metrics ? '<div class="pick-metrics">' + metrics + '</div>' : '') +
+        reason +
+        '</article>';
+    }).join('');
+    el.innerHTML =
+      '<div class="day-report-hd"><h3>今日总榜单</h3>' +
+      (subBits.length ? '<span class="sub">' + escapeHtml(subBits.join(' · ')) + '</span>' : '') +
+      '</div>' +
+      pickHtml +
+      briefParagraphsHtml(summary, 'day-report-summary');
+    el.hidden = false;
+  }
+
   function renderSyDay() {
     document.getElementById('syBriefDate').textContent = sySelectedDate || '—';
     const has = sySelectedDate && syDays.has(sySelectedDate);
@@ -1710,6 +1792,7 @@
       meta.innerHTML = '';
       chips.innerHTML = '';
       lists.innerHTML = `<div class="empty-hint" style="grid-column:1/-1"><strong>暂无数据</strong>该日尚未采集生意经榜单。日历蓝点日期可点选。</div>`;
+      renderSyOverallBoard(null);
       return;
     }
 
@@ -1722,6 +1805,8 @@
       <span>${escapeHtml(day.categoryParent || '美食')}</span>
       ${day.source ? `<a href="${escapeHtml(day.source)}" target="_blank" rel="noopener">来源</a>` : ''}
     `;
+
+    renderSyOverallBoard((D.shengyijing_report && D.shengyijing_report[sySelectedDate]) || null);
 
     const order = (day.category_order && day.category_order.length)
       ? day.category_order

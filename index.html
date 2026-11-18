@@ -986,7 +986,7 @@
     </div>
     <div class="card add-monitor" id="addMonitorBox">
       <div class="add-monitor-hd">添加对标监控</div>
-      <p class="hint" style="margin:0">粘贴抖音短链或主页链接。加入后会进待处理队列，我解析入库后明早早报一起采。</p>
+      <p class="hint" style="margin:0">粘贴抖音短链或主页链接。在 Mac App 里点加入后会立即出现在监控中；明天早报开始采集前一日作品。</p>
       <div class="add-monitor-row">
         <input id="addMonitorInput" type="text" inputmode="url" autocomplete="off" placeholder="https://v.douyin.com/… 或 douyin.com/user/…" />
         <button type="button" class="btn-primary" id="addMonitorBtn">加入监控</button>
@@ -1047,7 +1047,15 @@
     '火锅', '地方菜', '热门/特色菜', '自助餐', '饮品', '快餐小吃'
   ];
 
-  let mode = 'duibiao'; // duibiao | shengyijing | library
+  const MODE_KEY = 'duibiao_mode';
+  function loadMode() {
+    try {
+      const v = localStorage.getItem(MODE_KEY);
+      if (v === 'duibiao' || v === 'shengyijing' || v === 'library') return v;
+    } catch (_) {}
+    return 'duibiao';
+  }
+  let mode = loadMode(); // duibiao | shengyijing | library
   let selectedDate = D.default_date || (D.dates && D.dates[D.dates.length - 1]) || null;
   let sySelectedDate = D.shengyijing_default_date
     || (D.shengyijing_dates && D.shengyijing_dates[D.shengyijing_dates.length - 1])
@@ -2455,7 +2463,7 @@
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.addMonitorAccount) {
       try {
         window.webkit.messageHandlers.addMonitorAccount.postMessage(payload);
-        finish(true, '已提交，等待解析入库（通常很快）');
+        finish(true, '正在解析并加入监控…');
       } catch (e) {
         finish(false, '提交失败：' + (e && e.message ? e.message : e));
       }
@@ -2467,7 +2475,7 @@
       const arr = JSON.parse(localStorage.getItem(key) || '[]');
       arr.unshift(Object.assign({ status: 'pending' }, payload));
       localStorage.setItem(key, JSON.stringify(arr.slice(0, 50)));
-      finish(true, '已记在本机待处理（网页版）；Mac App 内提交才会写入监控队列');
+      finish(true, '已记在本机待处理（网页版）；请在 Mac「对标账号监控」App 里加入，才会立即生效');
     } catch (e) {
       finish(false, '无法保存：' + (e && e.message ? e.message : e));
     }
@@ -2485,10 +2493,10 @@
     };
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.stopMonitorAccount) {
       window.webkit.messageHandlers.stopMonitorAccount.postMessage(payload);
-      if (window.__duibiaoToast) window.__duibiaoToast('已提交停止监控', false);
+      if (window.__duibiaoToast) window.__duibiaoToast('正在停止监控…', false);
       return;
     }
-    if (window.__duibiaoToast) window.__duibiaoToast('请在 Mac「对标账号监控」App 内操作停止监控', true);
+    if (window.__duibiaoToast) window.__duibiaoToast('请在 Mac「对标账号监控」App 内停止监控，才会立即生效', true);
   }
 
   function parseDay(s) {
@@ -2537,12 +2545,13 @@
       mode === 'shengyijing'
         ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 + 类目总榜 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
         : mode === 'library'
-          ? `账号库 · 对标账号库 / 作品流 · 添加监控进待处理队列 · 监控中/未监控可切换 · 类目可折叠 · 表头可点升降序 · 查看作品可按播放量或发布时间排序 · 作品流可按时间范围、播放/互动、账号筛选 · ⌘R 刷新 App 数据`
+          ? `账号库 · 对标账号库 / 作品流 · 在 App 内加入或停止监控会立即生效 · 监控中/未监控可切换 · 类目可折叠 · 表头可点升降序 · 查看作品可按播放量或发布时间排序 · 作品流可按时间范围、播放/互动、账号筛选 · ⌘R 刷新 App 数据`
           : `左侧日历点选日期查看对标日报 · 蓝点 = 有早报 · 选题建议在 KPI 下方 · 入库播放/点赞/收藏为已采集作品合计 · 频次按入库作品发布间隔推算 · ⌘R 刷新 App 数据`;
   }
 
   function setMode(next) {
     mode = next;
+    try { localStorage.setItem(MODE_KEY, mode); } catch (_) {}
     document.querySelectorAll('.mode-seg button').forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-mode') === mode);
     });
@@ -2599,6 +2608,7 @@
   document.querySelectorAll('.mode-seg button').forEach(btn => {
     btn.addEventListener('click', () => setMode(btn.getAttribute('data-mode')));
   });
+  setMode(mode);
 
   document.querySelectorAll('.sec-tabs button[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {

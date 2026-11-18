@@ -1,5 +1,5 @@
 /* Service worker for installability on /duibiao-mobile/ */
-const CACHE = 'duibiao-shell-v3';
+const CACHE = 'duibiao-shell-v4';
 const BASE = '/duibiao-mobile';
 const SHELL = [
   BASE + '/',

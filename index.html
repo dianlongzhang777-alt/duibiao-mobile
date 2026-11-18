@@ -325,6 +325,21 @@
   }
   .day-report-advice p, .day-report-summary p { margin: 0 0 8px; }
   .day-report-advice p:last-child, .day-report-summary p:last-child { margin-bottom: 0; }
+  .day-report-summary .sum-lead { margin: 0 0 10px; line-height: 1.7; }
+  .day-report-summary ol.sum-list {
+    margin: 0;
+    padding-left: 1.35em;
+  }
+  .day-report-summary ol.sum-list > li {
+    margin: 0 0 12px;
+    line-height: 1.7;
+  }
+  .day-report-summary ol.sum-list > li:last-child { margin-bottom: 0; }
+  .day-report-summary .sum-why {
+    margin: 6px 0 0;
+    color: var(--muted);
+    line-height: 1.7;
+  }
 
   .day-posts {
     padding: 4px 10px 14px;
@@ -1594,9 +1609,39 @@
   function briefParagraphsHtml(text, className) {
     const raw = String(text || '').trim();
     if (!raw) return '';
-    const html = raw.split(/\n\s*\n/).map(function (p) {
-      return '<p>' + formatBriefRichText(p.replace(/\n/g, '')) + '</p>';
-    }).join('');
+    const lines = raw.split(/\n+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    const itemRe = /^(\d+)\.\s+/;
+    const items = [];
+    const lead = [];
+    let current = null;
+    lines.forEach(function (line) {
+      if (itemRe.test(line)) {
+        if (current) items.push(current);
+        current = { head: line.replace(itemRe, ''), why: [] };
+        return;
+      }
+      if (current) current.why.push(line);
+      else lead.push(line);
+    });
+    if (current) items.push(current);
+    let html = '';
+    if (!items.length) {
+      html = raw.split(/\n\s*\n/).map(function (p) {
+        return '<p>' + formatBriefRichText(p).replace(/\n/g, '<br>') + '</p>';
+      }).join('');
+    } else {
+      if (lead.length) {
+        html += lead.map(function (p) {
+          return '<p class="sum-lead">' + formatBriefRichText(p) + '</p>';
+        }).join('');
+      }
+      html += '<ol class="sum-list">' + items.map(function (it) {
+        const why = it.why.length
+          ? '<div class="sum-why">' + it.why.map(function (w) { return formatBriefRichText(w); }).join('<br>') + '</div>'
+          : '';
+        return '<li>' + formatBriefRichText(it.head) + why + '</li>';
+      }).join('') + '</ol>';
+    }
     return '<div class="' + className + '">' + html + '</div>';
   }
 

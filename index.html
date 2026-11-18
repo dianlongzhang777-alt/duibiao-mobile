@@ -491,8 +491,19 @@
   .cat-hd {
     display: flex; align-items: center; justify-content: space-between;
     padding: 8px 14px; font-weight: 650; font-size: 13px;
+    cursor: pointer; user-select: none;
   }
   .cat-hd .right { font-weight: 500; font-size: 12px; opacity: .85; }
+  .cat-caret {
+    display: inline-block;
+    width: 1em;
+    flex: none;
+    font-weight: 700;
+    transition: transform .15s ease;
+    transform: rotate(90deg);
+  }
+  .cat-block.collapsed .cat-caret { transform: rotate(0deg); }
+  .cat-block.collapsed .cat-body { display: none; }
   table.acct {
     width: 100%; border-collapse: collapse;
     font-size: 12.5px;
@@ -1086,6 +1097,33 @@
     if (!ACCT_POSTS_SORT_OPTS.includes(next) || next === acctPostsSort) return;
     acctPostsSort = next;
     try { localStorage.setItem(ACCT_POSTS_SORT_KEY, acctPostsSort); } catch (_) {}
+    renderCategories();
+  }
+
+  const CAT_COLLAPSE_KEY = 'duibiao_cat_collapsed';
+  function loadCollapsedCats() {
+    try {
+      const v = JSON.parse(localStorage.getItem(CAT_COLLAPSE_KEY) || '[]');
+      if (Array.isArray(v)) return new Set(v.map(String));
+    } catch (_) {}
+    return new Set();
+  }
+  let collapsedCats = loadCollapsedCats();
+  function persistCollapsedCats() {
+    try { localStorage.setItem(CAT_COLLAPSE_KEY, JSON.stringify(Array.from(collapsedCats))); } catch (_) {}
+  }
+  function isCatCollapsed(name) {
+    return collapsedCats.has(String(name || ''));
+  }
+  function categoryShouldCollapse(name, accounts) {
+    if (expandedAccountKey && (accounts || []).some(a => accountKey(a) === expandedAccountKey)) return false;
+    return isCatCollapsed(name);
+  }
+  function toggleCatCollapse(name) {
+    if (!name) return;
+    if (collapsedCats.has(name)) collapsedCats.delete(name);
+    else collapsedCats.add(name);
+    persistCollapsedCats();
     renderCategories();
   }
 
@@ -2198,6 +2236,28 @@
     return `<select class="cat-move" data-sec="${escapeHtml(sid)}" aria-label="移动到其他分类">${opts}</select>`;
   }
 
+  function catBlockHtml(name, bg, fg, rightHtml, accounts, status, headerSrc) {
+    const list = accounts || [];
+    const collapsed = categoryShouldCollapse(name, list);
+    const header = categoryHeaderLabelHtml(headerSrc || { name: name, count: list.length });
+    const rows = sortAccounts(list).map(a => accountRowHtml(a, { status: status })).join('');
+    const emptyRow = status === 'inactive' ? '' : '<tr><td colspan="8" class="empty-hint">无账号</td></tr>';
+    return `<div class="card cat-block${collapsed ? ' collapsed' : ''}" data-cat-name="${escapeHtml(name)}">
+      <div class="cat-hd" style="background:${bg};color:${fg}" role="button" tabindex="0" aria-expanded="${collapsed ? 'false' : 'true'}" aria-label="折叠或展开分类 ${escapeHtml(name)}">
+        <span class="cat-hd-left"><span class="cat-caret" aria-hidden="true">▸</span>${header}</span>
+        <span class="right">${rightHtml}</span>
+      </div>
+      <div class="cat-body">
+        <table class="acct">
+          <thead>
+            ${acctTableHeadHtml()}
+          </thead>
+          <tbody>${rows || emptyRow}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
   function renderCategories() {
     const activeCount = D.target_count || (D.targets || []).length || 0;
     const inactive = D.inactive_accounts || [];
@@ -2227,21 +2287,11 @@
       return;
     }
     const cats = D.categories || [];
-    root.innerHTML = cats.map(c => {
-      const rows = sortAccounts(c.accounts || []).map(a => accountRowHtml(a, { status: 'active' })).join('');
-      return `<div class="card cat-block">
-        <div class="cat-hd" style="background:${c.bg};color:${c.fg}">
-          <span class="cat-hd-left">${categoryHeaderLabelHtml(c)}</span>
-          <span class="right">${storedTotalsText({ stored_posts: c.stored_sum, stored_plays: c.stored_plays, stored_likes: c.stored_likes, stored_collects: c.stored_collects })}</span>
-        </div>
-        <table class="acct">
-          <thead>
-            ${acctTableHeadHtml()}
-          </thead>
-          <tbody>${rows || '<tr><td colspan="8" class="empty-hint">无账号</td></tr>'}</tbody>
-        </table>
-      </div>`;
-    }).join('') || '<div class="empty-hint">暂无监控账号</div>';
+    root.innerHTML = cats.map(c => catBlockHtml(
+      c.name, c.bg, c.fg,
+      storedTotalsText({ stored_posts: c.stored_sum, stored_plays: c.stored_plays, stored_likes: c.stored_likes, stored_collects: c.stored_collects }),
+      c.accounts || [], 'active', c
+    )).join('') || '<div class="empty-hint">暂无监控账号</div>';
   }
 
   function categoryHeaderLabelHtml(c) {
@@ -2312,19 +2362,10 @@
     return names.map(name => {
       const accounts = byCat[name];
       const meta = (D.categories || []).find(c => c.name === name) || { bg: '#F4F4F5', fg: '#646A73' };
-      const rows = sortAccounts(accounts).map(a => accountRowHtml(a, { status: 'inactive' })).join('');
-      return `<div class="card cat-block">
-        <div class="cat-hd" style="background:${meta.bg};color:${meta.fg}">
-          <span class="cat-hd-left">${categoryHeaderLabelHtml(Object.assign({}, meta, { name: name, count: accounts.length }))}</span>
-          <span class="right">未监控</span>
-        </div>
-        <table class="acct">
-          <thead>
-            ${acctTableHeadHtml()}
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`;
+      return catBlockHtml(
+        name, meta.bg, meta.fg, '未监控', accounts, 'inactive',
+        Object.assign({}, meta, { name: name, count: accounts.length })
+      );
     }).join('');
   }
 
@@ -2451,7 +2492,7 @@
       mode === 'shengyijing'
         ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 + 类目总榜 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
         : mode === 'library'
-          ? `账号库 · 对标账号库 / 作品流 · 添加监控进待处理队列 · 监控中/未监控可切换 · 表头可点升降序 · 查看作品可按播放量或发布时间排序 · 作品流可按时间范围、播放/互动、账号筛选 · ⌘R 刷新 App 数据`
+          ? `账号库 · 对标账号库 / 作品流 · 添加监控进待处理队列 · 监控中/未监控可切换 · 类目可折叠 · 表头可点升降序 · 查看作品可按播放量或发布时间排序 · 作品流可按时间范围、播放/互动、账号筛选 · ⌘R 刷新 App 数据`
           : `左侧日历点选日期查看对标日报 · 蓝点 = 有早报 · 选题建议在 KPI 下方 · 入库播放/点赞/收藏为已采集作品合计 · 频次按入库作品发布间隔推算 · ⌘R 刷新 App 数据`;
   }
 
@@ -2562,6 +2603,16 @@
       deleteCategory(delBtn.getAttribute('data-cat-name'));
       return;
     }
+    const catHd = e.target.closest('.cat-hd');
+    if (catHd && !e.target.closest('.cat-hd-actions, .cat-rename-input')) {
+      const block = catHd.closest('.cat-block');
+      const name = block && block.getAttribute('data-cat-name');
+      if (name) {
+        e.preventDefault();
+        toggleCatCollapse(name);
+        return;
+      }
+    }
     const sortTh = e.target.closest('th[data-acct-sort]');
     if (sortTh) {
       e.preventDefault();
@@ -2629,6 +2680,13 @@
       return;
     }
     if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.closest('.cat-hd') && !e.target.closest('.cat-hd-actions, .cat-rename-input, button, input, select, a')) {
+      e.preventDefault();
+      const block = e.target.closest('.cat-block');
+      const name = block && block.getAttribute('data-cat-name');
+      if (name) toggleCatCollapse(name);
+      return;
+    }
     const sortTh = e.target.closest('th[data-acct-sort]');
     if (sortTh) {
       e.preventDefault();

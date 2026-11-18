@@ -577,6 +577,7 @@
     color: var(--muted); font-size: 12px;
   }
   .acct-posts-hd strong { color: var(--text); font-weight: 600; }
+  .acct-posts-hd .seg button { min-height: 32px; padding: 4px 10px; }
   .acct-posts-list { display: flex; flex-direction: column; gap: 8px; }
   .acct-posts-list .feed-card {
     box-shadow: none;
@@ -1071,6 +1072,23 @@
     return posts;
   }
 
+  const ACCT_POSTS_SORT_KEY = 'duibiao_acct_posts_sort';
+  const ACCT_POSTS_SORT_OPTS = ['plays', 'latest'];
+  function loadAcctPostsSort() {
+    try {
+      const v = localStorage.getItem(ACCT_POSTS_SORT_KEY);
+      if (ACCT_POSTS_SORT_OPTS.includes(v)) return v;
+    } catch (_) {}
+    return 'plays';
+  }
+  let acctPostsSort = loadAcctPostsSort();
+  function setAcctPostsSort(next) {
+    if (!ACCT_POSTS_SORT_OPTS.includes(next) || next === acctPostsSort) return;
+    acctPostsSort = next;
+    try { localStorage.setItem(ACCT_POSTS_SORT_KEY, acctPostsSort); } catch (_) {}
+    renderCategories();
+  }
+
   let libStatus = 'active';
   const ACCT_SORT_STORAGE = 'duibiao_acct_sort';
   const ACCT_SORT_OPTS = ['nickname', 'followers', 'posts', 'plays', 'likes', 'collects', 'freq'];
@@ -1209,7 +1227,7 @@
   }
 
   function accountPostsPanelHtml(a) {
-    const posts = sortPosts(postsForAccount(a), 'plays');
+    const posts = sortPosts(postsForAccount(a), acctPostsSort);
     const key = accountKey(a);
     if (!posts.length) {
       return `<div class="acct-posts-panel" data-acct-key="${escapeHtml(key)}">
@@ -1224,9 +1242,14 @@
       stored_likes: posts.reduce((s, p) => s + (p.likes || 0), 0),
       stored_collects: posts.reduce((s, p) => s + (p.collects || 0), 0),
     };
+    const sortSeg = `<div class="seg acct-posts-sort" role="group" aria-label="入库作品排序">
+        <button type="button" data-acct-posts-sort="plays"${acctPostsSort === 'plays' ? ' class="active"' : ''}>按播放量</button>
+        <button type="button" data-acct-posts-sort="latest"${acctPostsSort === 'latest' ? ' class="active"' : ''}>按发布时间</button>
+      </div>`;
     return `<div class="acct-posts-panel" data-acct-key="${escapeHtml(key)}">
       <div class="acct-posts-hd">
-        <span><strong>${escapeHtml(a.nickname || '')}</strong> · ${storedTotalsText(totals)} · 按播放量高→低</span>
+        <span><strong>${escapeHtml(a.nickname || '')}</strong> · ${storedTotalsText(totals)}</span>
+        ${sortSeg}
       </div>
       <div class="acct-posts-list">${posts.map(p => postCardHtml(p, { hideNick: true })).join('')}</div>
     </div>`;
@@ -2190,7 +2213,7 @@
     if (title) {
       title.textContent = libStatus === 'inactive'
         ? '以下账号当前不采集；点「重新监控」可加回队列'
-        : '以下账号每天早报会采集；点「查看作品」展开入库内容';
+        : '以下账号每天早报会采集；点「查看作品」展开入库内容，可按播放量或发布时间排序';
     }
     document.getElementById('libHint').textContent =
       libStatus === 'inactive'
@@ -2428,7 +2451,7 @@
       mode === 'shengyijing'
         ? `生意经 · 日历蓝点=有采集 · 6 品类各 达人/商家 TOP5 + 类目总榜 · 共 ${syN} 天存档 · ⌘R 刷新 App 数据`
         : mode === 'library'
-          ? `账号库 · 对标账号库 / 作品流 · 添加监控进待处理队列 · 监控中/未监控可切换 · 表头可点升降序 · 作品流可按时间范围、播放/互动、账号筛选 · ⌘R 刷新 App 数据`
+          ? `账号库 · 对标账号库 / 作品流 · 添加监控进待处理队列 · 监控中/未监控可切换 · 表头可点升降序 · 查看作品可按播放量或发布时间排序 · 作品流可按时间范围、播放/互动、账号筛选 · ⌘R 刷新 App 数据`
           : `左侧日历点选日期查看对标日报 · 蓝点 = 有早报 · 选题建议在 KPI 下方 · 入库播放/点赞/收藏为已采集作品合计 · 频次按入库作品发布间隔推算 · ⌘R 刷新 App 数据`;
   }
 
@@ -2563,6 +2586,13 @@
         profile_url: stop.getAttribute('data-profile'),
         share_url: stop.getAttribute('data-share'),
       });
+      return;
+    }
+    const postsSortBtn = e.target.closest('button[data-acct-posts-sort]');
+    if (postsSortBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      setAcctPostsSort(postsSortBtn.getAttribute('data-acct-posts-sort'));
       return;
     }
     const btn = e.target.closest('button.btn-view-posts');

@@ -1476,8 +1476,39 @@
     return /MicroMessenger|QQ\//i.test(ua) || /MiniProgram/i.test(ua);
   }
 
-  // Phone: open a real https share page. App schemes are often
-  // swallowed by the home-screen PWA, so the tap appeared to do nothing.
+  function douyinAppScheme(url) {
+    const id = extractAwemeId(url);
+    if (id) return 'snssdk1128://aweme/detail/' + id;
+    const sec = extractDouyinSecUid(url);
+    if (sec) return 'snssdk1128://user/profile/' + sec;
+    return '';
+  }
+
+  // Launch Douyin without navigating the current page (avoids "无法访问此网站").
+  function launchDouyinApp(url) {
+    const scheme = douyinAppScheme(url);
+    if (!scheme) return;
+    try {
+      const ifr = document.createElement('iframe');
+      ifr.setAttribute('style', 'display:none;width:0;height:0;border:0;position:absolute;left:-9999px');
+      ifr.src = scheme;
+      document.body.appendChild(ifr);
+      setTimeout(function () { ifr.remove(); }, 2500);
+    } catch (_) {}
+  }
+
+  function openInSystemBrowser(web) {
+    const a = document.createElement('a');
+    a.href = web;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  // Phone: try to open the Douyin app first, then the official share page in
+  // the system browser (not inside the home-screen PWA, where app links fail).
   // Desktop and the Mac App are left alone so the right-side preview still works.
   function openMobileExternalLink(anchor, url) {
     if (!isMobileDevice()) return false;
@@ -1502,11 +1533,10 @@
       window.location.href = web;
       return true;
     }
-    if (isStandalonePwa()) {
-      window.location.href = web;
-      return true;
-    }
-    return false;
+    if (isDy) launchDouyinApp(url);
+    openInSystemBrowser(web);
+    if (isDy && window.__duibiaoToast) window.__duibiaoToast('正在打开抖音…', false);
+    return true;
   }
 
   function baokuanBtn(url) {

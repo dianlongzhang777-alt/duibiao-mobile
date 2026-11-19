@@ -874,9 +874,61 @@
     .kpi .n { font-size: 18px; }
     .date-pill { font-size: 11px; padding: 2px 8px; }
   }
+
+  .dy-open-mask {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(15,18,24,.45);
+  }
+  .dy-open-mask.show { display: block; }
+  .dy-open-sheet {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: #fff;
+    border-radius: 16px 16px 0 0;
+    padding: 18px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -8px 28px rgba(0,0,0,.12);
+  }
+  .dy-open-sheet p { margin: 0 0 14px; font-size: 15px; font-weight: 600; color: var(--text); }
+  .dy-open-sheet .row { display: flex; gap: 8px; }
+  .dy-open-sheet a, .dy-open-sheet button {
+    flex: 1;
+    text-align: center;
+    padding: 12px 10px;
+    min-height: 44px;
+    border-radius: 10px;
+    font-size: 15px;
+    line-height: 20px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .dy-open-sheet a.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .dy-open-sheet .dy-open-cancel {
+    margin-top: 8px;
+    width: 100%;
+    flex: none;
+  }
 </style>
 </head>
 <body>
+<div id="dyOpenMask" class="dy-open-mask" hidden>
+  <div class="dy-open-sheet" role="dialog" aria-modal="true" aria-label="打开抖音">
+    <p>在抖音中查看这条作品</p>
+    <div class="row">
+      <a id="dyOpenApp" class="primary" href="#">打开抖音</a>
+      <button type="button" id="dyOpenCopy">复制链接</button>
+    </div>
+    <button type="button" id="dyOpenClose" class="dy-open-cancel">取消</button>
+  </div>
+</div>
 <div class="page">
   <div class="page-title">
     <div class="title-left">
@@ -1497,46 +1549,79 @@
     } catch (_) {}
   }
 
-  function openInSystemBrowser(web) {
-    const a = document.createElement('a');
-    a.href = web;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  function hideDouyinOpenSheet() {
+    const mask = document.getElementById('dyOpenMask');
+    if (!mask) return;
+    mask.classList.remove('show');
+    mask.hidden = true;
   }
 
-  // Phone: try to open the Douyin app first, then the official share page in
-  // the system browser (not inside the home-screen PWA, where app links fail).
+  function showDouyinOpenSheet(url) {
+    const mask = document.getElementById('dyOpenMask');
+    const app = document.getElementById('dyOpenApp');
+    if (!mask || !app) return;
+    const scheme = douyinAppScheme(url);
+    const web = mobileWebDouyinUrl(url) || url;
+    app.href = scheme || web;
+    mask.dataset.web = web;
+    mask.hidden = false;
+    mask.classList.add('show');
+  }
+
+  function installDouyinOpenSheet() {
+    const mask = document.getElementById('dyOpenMask');
+    if (!mask || mask.dataset.ready) return;
+    mask.dataset.ready = '1';
+    mask.addEventListener('click', function (e) {
+      if (e.target === mask) hideDouyinOpenSheet();
+    });
+    const closeBtn = document.getElementById('dyOpenClose');
+    if (closeBtn) closeBtn.addEventListener('click', hideDouyinOpenSheet);
+    const copyBtn = document.getElementById('dyOpenCopy');
+    if (copyBtn) copyBtn.addEventListener('click', function () {
+      const web = mask.dataset.web || '';
+      const after = function (ok) {
+        window.__duibiaoToast && window.__duibiaoToast(ok ? '链接已复制，可在抖音中打开' : '复制失败，请长按链接', !ok);
+      };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText && web) {
+          navigator.clipboard.writeText(web).then(function () { after(true); }).catch(function () { after(false); });
+        } else { after(false); }
+      } catch (_) { after(false); }
+    });
+    const app = document.getElementById('dyOpenApp');
+    if (app) app.addEventListener('click', function () {
+      // Let the app-scheme <a> proceed (real user gesture). Close shortly after.
+      setTimeout(hideDouyinOpenSheet, 400);
+    });
+  }
+
+  // Phone: open Douyin via the app scheme only. Do not auto-open douyin.com —
+  // some phones (especially with Tailscale DNS) fail to resolve it and show NXDOMAIN.
   // Desktop and the Mac App are left alone so the right-side preview still works.
   function openMobileExternalLink(anchor, url) {
     if (!isMobileDevice()) return false;
     const isDy = isDouyinCollectUrl(url);
     if (!isDy && !isStandalonePwa()) return false;
     const web = isDy ? mobileWebDouyinUrl(url) : url;
-    if (anchor) {
-      anchor.setAttribute('href', web);
-      anchor.setAttribute('target', '_blank');
-      anchor.setAttribute('rel', 'noopener noreferrer');
-    }
+    installDouyinOpenSheet();
     if (isInAppBrowser()) {
       const hint = '请点右上角「在浏览器中打开」；链接已复制';
       const after = function () { window.__duibiaoToast && window.__duibiaoToast(hint, false); };
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
           navigator.clipboard.writeText(web).then(after).catch(after);
-        } else {
-          after();
-        }
+        } else { after(); }
       } catch (_) { after(); }
-      window.location.href = web;
+      if (isDy) showDouyinOpenSheet(url);
       return true;
     }
-    if (isDy) launchDouyinApp(url);
-    openInSystemBrowser(web);
-    if (isDy && window.__duibiaoToast) window.__duibiaoToast('正在打开抖音…', false);
-    return true;
+    if (isDy) {
+      launchDouyinApp(url);
+      showDouyinOpenSheet(url);
+      return true;
+    }
+    return false;
   }
 
   function baokuanBtn(url) {

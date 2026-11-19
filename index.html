@@ -1438,6 +1438,95 @@
     } catch (_) { return false; }
   }
 
+  function isMobileDevice() {
+    return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  }
+
+  function isStandalonePwa() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || window.navigator.standalone === true;
+  }
+
+  function extractAwemeId(url) {
+    try {
+      const u = new URL(String(url), location.href);
+      const m = u.pathname.match(/\/(?:share\/)?(?:video|note)\/(\d+)/);
+      return m ? m[1] : '';
+    } catch (_) { return ''; }
+  }
+
+  function extractDouyinSecUid(url) {
+    try {
+      const u = new URL(String(url), location.href);
+      const m = u.pathname.match(/\/(?:share\/)?user\/(MS4wLjABAAAA[A-Za-z0-9_-]+)/);
+      return m ? m[1] : '';
+    } catch (_) { return ''; }
+  }
+
+  function mobileWebDouyinUrl(url) {
+    const id = extractAwemeId(url);
+    if (id) return 'https://www.iesdouyin.com/share/video/' + id;
+    const sec = extractDouyinSecUid(url);
+    if (sec) return 'https://www.iesdouyin.com/share/user/' + sec;
+    return url;
+  }
+
+  // Phone / installed PWA: open Douyin in the app (fallback to share page).
+  // Desktop and the Mac App are left alone so the right-side preview still works.
+  function openExternalHref(url) {
+    if (!isMobileDevice()) return false;
+    const isDy = isDouyinCollectUrl(url);
+    if (!isDy && !isStandalonePwa()) return false;
+    const web = isDy ? mobileWebDouyinUrl(url) : url;
+    const id = extractAwemeId(url);
+    const sec = extractDouyinSecUid(url);
+    const isAndroid = /Android/i.test(navigator.userAgent || '');
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+
+    function intentFor(hostPath, fallback) {
+      return 'intent://' + hostPath + '#Intent;scheme=https;package=com.ss.android.ugc.aweme;S.browser_fallback_url='
+        + encodeURIComponent(fallback) + ';end';
+    }
+
+    if (isDy && isAndroid) {
+      if (id) {
+        window.location.href = intentFor('www.iesdouyin.com/share/video/' + id, web);
+        return true;
+      }
+      if (sec) {
+        window.location.href = intentFor('www.iesdouyin.com/share/user/' + sec, web);
+        return true;
+      }
+      try {
+        const u = new URL(url);
+        window.location.href = intentFor(u.host + u.pathname + u.search, web);
+        return true;
+      } catch (_) {}
+    }
+
+    if (isDy && isIOS) {
+      const app = id
+        ? ('snssdk1128://aweme/detail/' + id)
+        : (sec ? ('snssdk1128://user/profile/' + sec) : '');
+      if (app) {
+        let left = false;
+        const mark = function () { left = true; };
+        document.addEventListener('visibilitychange', mark, { once: true });
+        window.location.href = app;
+        setTimeout(function () {
+          document.removeEventListener('visibilitychange', mark);
+          if (left || document.hidden) return;
+          window.location.href = web;
+        }, 700);
+        return true;
+      }
+    }
+
+    const w = window.open(web, '_blank', 'noopener,noreferrer');
+    if (!w) window.location.href = web;
+    return true;
+  }
+
   function baokuanBtn(url) {
     if (!isDouyinCollectUrl(url)) return '';
     const u = escapeHtml(String(url));
@@ -2830,6 +2919,25 @@
     e.stopPropagation();
     const url = btn.getAttribute('data-baokuan-url') || '';
     sendToBaokuan(url);
+  }, true);
+
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (e.button != null && e.button !== 0) return;
+    if (e.target.closest && e.target.closest('button.btn-baokuan')) return;
+    const a = e.target.closest('a[href]');
+    if (!a || a.getAttribute('download') != null) return;
+    const href = a.href;
+    if (!href || href.startsWith('javascript:') || href.startsWith('#')) return;
+    let parsed;
+    try { parsed = new URL(href, location.href); } catch (_) { return; }
+    if (parsed.origin === location.origin) return;
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+    if (openExternalHref(parsed.href)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
   }, true);
 
   syncSortButtons();

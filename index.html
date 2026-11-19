@@ -1471,60 +1471,42 @@
     return url;
   }
 
-  // Phone / installed PWA: open Douyin in the app (fallback to share page).
+  function isInAppBrowser() {
+    const ua = navigator.userAgent || '';
+    return /MicroMessenger|QQ\//i.test(ua) || /MiniProgram/i.test(ua);
+  }
+
+  // Phone: open a real https share page. App schemes are often
+  // swallowed by the home-screen PWA, so the tap appeared to do nothing.
   // Desktop and the Mac App are left alone so the right-side preview still works.
-  function openExternalHref(url) {
+  function openMobileExternalLink(anchor, url) {
     if (!isMobileDevice()) return false;
     const isDy = isDouyinCollectUrl(url);
     if (!isDy && !isStandalonePwa()) return false;
     const web = isDy ? mobileWebDouyinUrl(url) : url;
-    const id = extractAwemeId(url);
-    const sec = extractDouyinSecUid(url);
-    const isAndroid = /Android/i.test(navigator.userAgent || '');
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-
-    function intentFor(hostPath, fallback) {
-      return 'intent://' + hostPath + '#Intent;scheme=https;package=com.ss.android.ugc.aweme;S.browser_fallback_url='
-        + encodeURIComponent(fallback) + ';end';
+    if (anchor) {
+      anchor.setAttribute('href', web);
+      anchor.setAttribute('target', '_blank');
+      anchor.setAttribute('rel', 'noopener noreferrer');
     }
-
-    if (isDy && isAndroid) {
-      if (id) {
-        window.location.href = intentFor('www.iesdouyin.com/share/video/' + id, web);
-        return true;
-      }
-      if (sec) {
-        window.location.href = intentFor('www.iesdouyin.com/share/user/' + sec, web);
-        return true;
-      }
+    if (isInAppBrowser()) {
+      const hint = '请点右上角「在浏览器中打开」；链接已复制';
+      const after = function () { window.__duibiaoToast && window.__duibiaoToast(hint, false); };
       try {
-        const u = new URL(url);
-        window.location.href = intentFor(u.host + u.pathname + u.search, web);
-        return true;
-      } catch (_) {}
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(web).then(after).catch(after);
+        } else {
+          after();
+        }
+      } catch (_) { after(); }
+      window.location.href = web;
+      return true;
     }
-
-    if (isDy && isIOS) {
-      const app = id
-        ? ('snssdk1128://aweme/detail/' + id)
-        : (sec ? ('snssdk1128://user/profile/' + sec) : '');
-      if (app) {
-        let left = false;
-        const mark = function () { left = true; };
-        document.addEventListener('visibilitychange', mark, { once: true });
-        window.location.href = app;
-        setTimeout(function () {
-          document.removeEventListener('visibilitychange', mark);
-          if (left || document.hidden) return;
-          window.location.href = web;
-        }, 700);
-        return true;
-      }
+    if (isStandalonePwa()) {
+      window.location.href = web;
+      return true;
     }
-
-    const w = window.open(web, '_blank', 'noopener,noreferrer');
-    if (!w) window.location.href = web;
-    return true;
+    return false;
   }
 
   function baokuanBtn(url) {
@@ -2934,7 +2916,7 @@
     try { parsed = new URL(href, location.href); } catch (_) { return; }
     if (parsed.origin === location.origin) return;
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
-    if (openExternalHref(parsed.href)) {
+    if (openMobileExternalLink(a, parsed.href)) {
       e.preventDefault();
       e.stopPropagation();
     }
@@ -2959,6 +2941,7 @@
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
     navigator.serviceWorker.register('/duibiao-mobile/sw.js', { scope: '/duibiao-mobile/' })
+      .then(function (reg) { return reg.update(); })
       .catch(function () {});
   });
 }
